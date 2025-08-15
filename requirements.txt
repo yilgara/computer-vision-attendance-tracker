@@ -1,11 +1,10 @@
 # Core packages
 numpy==1.25.0
-protobuf==3.20.3
 pandas==2.0.3
 
 # Deep learning frameworks
 tensorflow==2.15.0
-keras==2.15.0
+
 
 # Face recognition
 deepface==0.0.95
@@ -13,10 +12,6 @@ deepface==0.0.95
 # OpenCV (headless for server / Streamlit deployment)
 opencv-python-headless
 
-# Streamlit and its dependencies (pin compatible versions)
-streamlit==1.26.0
-rich
-markdown-it-py==4.0.0
-mdurl==0.1.2
-pygments==2.19.2
+# Streamlit
+streamlit
 
