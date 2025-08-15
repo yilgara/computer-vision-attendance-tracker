@@ -500,7 +500,11 @@ def show_live_recognition(tracker):
                     
                     # Process each face
                     for i, face in enumerate(faces):
-                        face_array = (face * 255).astype(np.uint8)
+                        if isinstance(face, dict):
+                            face_array = (face['face'] * 255).astype(np.uint8)
+                        else:
+                            face_array = (face * 255).astype(np.uint8)
+                       
                         
                         # Get embedding
                         embedding = tracker.extract_face_embedding(face_array)
