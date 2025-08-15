@@ -1,0 +1,14 @@
+# Core packages
+numpy==1.25.0
+protobuf==3.20
+pandas==2.0.3
+
+# Deep learning frameworks
+tensorflow==2.15.0
+keras==2.15.0
+
+# Face recognition
+deepface==0.0.95
+
+# OpenCV (headless for server / Streamlit deployment)
+opencv-python-headless
