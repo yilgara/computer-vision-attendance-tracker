@@ -12,3 +12,11 @@ deepface==0.0.95
 
 # OpenCV (headless for server / Streamlit deployment)
 opencv-python-headless
+
+# Streamlit and its dependencies (pin compatible versions)
+streamlit==1.26.0
+rich==14.1.0
+markdown-it-py==4.0.0
+mdurl==0.1.2
+pygments==2.19.2
+
