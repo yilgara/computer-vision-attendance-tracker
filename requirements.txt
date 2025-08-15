@@ -1,6 +1,6 @@
 # Core packages
 numpy==1.25.0
-protobuf==3.20
+protobuf==3.20.3
 pandas==2.0.3
 
 # Deep learning frameworks
