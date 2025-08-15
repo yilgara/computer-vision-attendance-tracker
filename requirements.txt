@@ -1,6 +1,6 @@
 # Core packages
-numpy==1.25.0
-pandas==2.0.3
+numpy
+pandas
 
 # Deep learning frameworks
 tensorflow==2.12.0
