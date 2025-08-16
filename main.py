@@ -531,7 +531,7 @@ def show_live_recognition(tracker):
                                 st.write(f"Name: {name}")
                                 st.write(f"Confidence: {confidence:.1f}%")
                                 
-                                if name != "Unknown" and confidence > tracker.similarity_threshold:
+                                if name != "Unknown" and confidence > (tracker.similarity_threshold * 100):
                                     action = tracker.determine_action(name)
                                     
                                     if st.button(f"Log {action} for {name}", key=f"log_{i}"):
