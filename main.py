@@ -671,7 +671,7 @@ def show_settings(tracker):
         detection_backend = st.selectbox(
             "Face Detection Model:",
             options=['retinaface', 'opencv', 'ssd', 'dlib', 'mtcnn'],
-            index=0,
+            index=['retinaface', 'opencv', 'ssd', 'dlib', 'mtcnn'].index(tracker.detection_backend), 
             help="RetinaFace is recommended for best accuracy"
         )
     
@@ -679,7 +679,7 @@ def show_settings(tracker):
         recognition_model = st.selectbox(
             "Face Recognition Model:",
             options=['Facenet512', 'Facenet', 'VGG-Face', 'OpenFace', 'DeepFace'],
-            index=0,
+            index=['Facenet512', 'Facenet', 'VGG-Face', 'OpenFace', 'DeepFace'].index(tracker.recognition_model), 
             help="Facenet512 provides best accuracy"
         )
     
@@ -687,7 +687,7 @@ def show_settings(tracker):
         "Recognition Threshold:",
         min_value=0.1,
         max_value=1.0,
-        value=0.6,
+        value=tracker.similarity_threshold, 
         step=0.05,
         help="Higher values require more similarity for recognition"
     )
@@ -696,7 +696,7 @@ def show_settings(tracker):
         "Entry/Exit Buffer (seconds):",
         min_value=5,
         max_value=300,
-        value=30,
+        value=tracker.entry_exit_buffer,  
         help="Minimum time between consecutive logs for same person"
     )
     
