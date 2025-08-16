@@ -315,7 +315,7 @@ def show_employee_management(tracker):
                 help="Upload multiple clear photos of the employee for better recognition"
             )
         
-            if st.button("Add Employee", type="primary"):
+            if st.form_submit_button("Add Employee", type="primary"):
                 
                 if employee_name and uploaded_files:
                   
