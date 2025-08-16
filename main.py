@@ -345,7 +345,9 @@ def show_employee_management(tracker):
                 # Add to tracker
                 tracker.known_embeddings.extend(embeddings_to_add)
                 tracker.known_names.extend(names_to_add)
+                st.write(tracker.known_names)
                 tracker.save_embeddings()
+                st.write(tracker.known_names)
                 
                 st.success(f"Added {employee_name} with {len(embeddings_to_add)} face embeddings!")
                 status_text.empty()
@@ -523,7 +525,7 @@ def show_live_recognition(tracker):
                                 st.write(f"Name: {name}")
                                 st.write(f"Confidence: {confidence:.1f}%")
                                 
-                                if name != "Unknown" and confidence > 60:
+                                if name != "Unknown" and confidence > tracker.confidence_threshold:
                                     action = tracker.determine_action(name)
                                     
                                     if st.button(f"Log {action} for {name}", key=f"log_{i}"):
