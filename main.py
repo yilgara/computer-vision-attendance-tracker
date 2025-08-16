@@ -228,7 +228,7 @@ def get_tracker():
 
 def main():
     """Main Streamlit application"""
-    st.title("👥 Employee Attendance Tracking System")
+    st.title("Employee Attendance Tracking System")
     st.markdown("---")
     
     # Initialize tracker
