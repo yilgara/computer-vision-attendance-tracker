@@ -54,7 +54,7 @@ class StreamlitAttendanceTracker:
         
         # Initialize CSV
         self.init_csv()
-        tracker.load_embeddings()
+        self.load_embeddings()
     
     def init_session_state(self):
         """Initialize Streamlit session state variables"""
