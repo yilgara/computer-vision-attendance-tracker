@@ -304,8 +304,10 @@ def show_employee_management(tracker):
             accept_multiple_files=True,
             help="Upload multiple clear photos of the employee for better recognition"
         )
+        st.write(tracker.known_names)
         
         if st.button("Add Employee", type="primary"):
+            st.write(tracker.known_names)
             if employee_name and uploaded_files:
                 # Create employee folder
                 employee_folder = os.path.join(tracker.employees_folder, employee_name)
@@ -343,7 +345,7 @@ def show_employee_management(tracker):
                     progress_bar.progress((i + 1) / len(uploaded_files))
                 
                 # Add to tracker
-                st.write(tracker.known_names)
+                
                 st.write(names_to_add)
                 tracker.known_embeddings.extend(embeddings_to_add)
                 tracker.known_names.extend(names_to_add)
