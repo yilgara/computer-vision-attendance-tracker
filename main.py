@@ -658,7 +658,7 @@ def show_reports(tracker):
 def show_settings(tracker):
     """Show system settings"""
     st.header("System Settings")
-    st.write(tracker.known_names)
+
     
     # Model settings
     st.subheader("Recognition Settings")
