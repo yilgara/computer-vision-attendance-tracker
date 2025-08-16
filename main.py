@@ -666,22 +666,13 @@ def show_settings(tracker):
     st.subheader("Recognition Settings")
     
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        detection_backend = st.selectbox(
-            "Face Detection Model:",
-            options=['retinaface', 'opencv', 'ssd', 'dlib', 'mtcnn'],
-            index=['retinaface', 'opencv', 'ssd', 'dlib', 'mtcnn'].index(tracker.detection_backend), 
-            help="RetinaFace is recommended for best accuracy"
-        )
+        st.info(f"Face Detection Model: {tracker.detection_backend}")
     
     with col2:
-        recognition_model = st.selectbox(
-            "Face Recognition Model:",
-            options=['Facenet512', 'Facenet', 'VGG-Face', 'OpenFace', 'DeepFace'],
-            index=['Facenet512', 'Facenet', 'VGG-Face', 'OpenFace', 'DeepFace'].index(tracker.recognition_model), 
-            help="Facenet512 provides best accuracy"
-        )
+        st.info(f"Face Recognition Model: {tracker.recognition_model}")elp="Facenet512 provides best accuracy"
+            )
     
     similarity_threshold = st.slider(
         "Recognition Threshold:",
