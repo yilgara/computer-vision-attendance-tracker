@@ -671,7 +671,7 @@ def show_settings(tracker):
         st.info(f"Face Detection Model: {tracker.detection_backend}")
     
     with col2:
-        st.info(f"Face Recognition Model: {tracker.recognition_model}")elp="Facenet512 provides best accuracy")
+        st.info(f"Face Recognition Model: {tracker.recognition_model}")
     
     similarity_threshold = st.slider(
         "Recognition Threshold:",
