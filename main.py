@@ -519,6 +519,22 @@ def show_live_recognition(tracker):
 
 
 
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+
+
+class VideoProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.frame = None
+        self.captured = False  # make sure we capture only once
+
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        if not self.captured:
+            self.frame = img  # store the frame
+            self.captured = True
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+
 def show_manual_recognition(tracker):
     """Manual recognition mode - existing functionality"""
     st.subheader("📷 Manual Camera Input")
@@ -662,12 +678,24 @@ def show_automatic_recognition(tracker):
         st.success("🟢 Auto Detection Active")
         
         # Camera input for automatic mode
-        picture = st.camera_input(
-            "Camera Feed (Auto-detecting...)",
-            key="auto_camera"
-        )
+    ctx = webrtc_streamer(
+        key="auto_camera",
+        video_processor_factory=VideoProcessor,
+        media_stream_constraints={"video": True, "audio": False},
+    )
+    buf = None
+    if ctx.video_processor and ctx.video_processor.captured:
+        # NumPy array
+        picture = ctx.video_processor.frame
+        st.image(picture, channels="BGR")
+    
+        # Convert NumPy array to BytesIO for Image.open()
+        img_pil = Image.fromarray(cv2.cvtColor(picture, cv2.COLOR_BGR2RGB))
+        buf = io.BytesIO()
+        img_pil.save(buf, format="PNG")
+        buf.seek(0)
         
-        if picture is not None:
+        if buf is not None:
             # Only process every N seconds to avoid overwhelming
             current_time = time.time()
             if 'last_detection_time' not in st.session_state:
@@ -675,7 +703,7 @@ def show_automatic_recognition(tracker):
             
             if current_time - st.session_state.last_detection_time >= detection_interval:
                 st.session_state.last_detection_time = current_time
-                process_automatic_detection(tracker, picture, auto_confidence_threshold, max_auto_logs)
+                process_automatic_detection(tracker, buf, auto_confidence_threshold, max_auto_logs)
         
         # Auto-refresh every few seconds
         time.sleep(1)
