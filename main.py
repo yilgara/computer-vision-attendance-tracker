@@ -489,8 +489,40 @@ def show_live_recognition(tracker):
     
     st.info(f"System ready with {len(set(tracker.known_names))} registered employees")
     
-    # Camera input
-    st.subheader("Camera Input")
+    # Mode selection
+    st.subheader("Recognition Mode")
+    mode = st.radio(
+        "Select Recognition Mode:",
+        options=["Manual Mode", "Automatic Mode"],
+        help="Manual: Take picture manually and approve logging. Automatic: Continuous detection with auto-logging."
+    )
+    
+    if mode == "Manual Mode":
+        show_manual_recognition(tracker)
+    else:
+        show_automatic_recognition(tracker)
+    
+    # Manual entry option
+    st.subheader("Manual Entry")
+    with st.expander("Manual Attendance Entry"):
+        if tracker.known_names:
+            unique_names = list(set(tracker.known_names))
+            selected_employee = st.selectbox("Select Employee:", unique_names)
+            action = st.selectbox("Action:", ["ENTRY", "EXIT"])
+            
+            if st.button("Log Manual Entry"):
+                success = tracker.log_attendance(selected_employee, action, 100.0)
+                if success:
+                    st.success(f"Manually logged {action} for {selected_employee}!")
+                else:
+                    st.warning("Entry was too recent, skipped logging.")
+
+
+
+def show_manual_recognition(tracker):
+    """Manual recognition mode - existing functionality"""
+    st.subheader("📷 Manual Camera Input")
+    st.info("Take a picture when ready, then manually approve attendance logging.")
     
     # Use Streamlit's camera input
     picture = st.camera_input("Take a picture for face recognition")
@@ -526,7 +558,6 @@ def show_live_recognition(tracker):
                             face_array = (face['face'] * 255).astype(np.uint8)
                         else:
                             face_array = (face * 255).astype(np.uint8)
-                       
                         
                         # Get embedding
                         embedding = tracker.extract_face_embedding(face_array)
@@ -563,21 +594,194 @@ def show_live_recognition(tracker):
                     
             except Exception as e:
                 st.error(f"Error processing image: {e}")
+
+def show_automatic_recognition(tracker):
+    """Automatic recognition mode with continuous detection"""
+    st.subheader("🔄 Automatic Recognition Mode")
+    st.info("Camera will continuously monitor for faces and automatically log attendance.")
     
-    # Manual entry option
-    st.subheader("Manual Entry")
-    with st.expander("Manual Attendance Entry"):
-        if tracker.known_names:
-            unique_names = list(set(tracker.known_names))
-            selected_employee = st.selectbox("Select Employee:", unique_names)
-            action = st.selectbox("Action:", ["ENTRY", "EXIT"])
+    # Initialize session state for automatic mode
+    if 'auto_mode_active' not in st.session_state:
+        st.session_state.auto_mode_active = False
+    if 'auto_detection_logs' not in st.session_state:
+        st.session_state.auto_detection_logs = []
+    if 'frame_count' not in st.session_state:
+        st.session_state.frame_count = 0
+    
+    # Auto mode settings
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        auto_confidence_threshold = st.slider(
+            "Auto-log Confidence Threshold:",
+            min_value=0.5,
+            max_value=1.0,
+            value=max(0.8, tracker.similarity_threshold),
+            step=0.05,
+            help="Higher threshold for automatic logging (more strict)"
+        )
+    
+    with col2:
+        detection_interval = st.number_input(
+            "Detection Interval (seconds):",
+            min_value=1,
+            max_value=30,
+            value=3,
+            help="How often to process frames for detection"
+        )
+    
+    with col3:
+        max_auto_logs = st.number_input(
+            "Max Auto Logs:",
+            min_value=5,
+            max_value=100,
+            value=20,
+            help="Maximum automatic detections to show"
+        )
+    
+    # Control buttons
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("▶️ Start Auto Detection", type="primary"):
+            st.session_state.auto_mode_active = True
+            st.rerun()
+    
+    with col2:
+        if st.button("⏸️ Stop Auto Detection", type="secondary"):
+            st.session_state.auto_mode_active = False
+            st.rerun()
+    
+    with col3:
+        if st.button("🗑️ Clear Logs"):
+            st.session_state.auto_detection_logs = []
+            st.rerun()
+    
+    # Show status
+    if st.session_state.auto_mode_active:
+        st.success("🟢 Auto Detection Active")
+        
+        # Camera input for automatic mode
+        picture = st.camera_input(
+            "Camera Feed (Auto-detecting...)",
+            key="auto_camera"
+        )
+        
+        if picture is not None:
+            # Only process every N seconds to avoid overwhelming
+            current_time = time.time()
+            if 'last_detection_time' not in st.session_state:
+                st.session_state.last_detection_time = 0
             
-            if st.button("Log Manual Entry"):
-                success = tracker.log_attendance(selected_employee, action, 100.0)
-                if success:
-                    st.success(f"Manually logged {action} for {selected_employee}!")
+            if current_time - st.session_state.last_detection_time >= detection_interval:
+                st.session_state.last_detection_time = current_time
+                process_automatic_detection(tracker, picture, auto_confidence_threshold, max_auto_logs)
+        
+        # Auto-refresh every few seconds
+        time.sleep(1)
+        st.rerun()
+        
+    else:
+        st.info("🔴 Auto Detection Stopped")
+        
+        # Show manual camera when stopped
+        st.camera_input("Camera Preview (Not detecting)", disabled=True)
+    
+    # Display automatic detection logs
+    st.subheader("📝 Automatic Detection Log")
+    
+    if st.session_state.auto_detection_logs:
+        # Show recent detections
+        recent_logs = st.session_state.auto_detection_logs[-max_auto_logs:]
+        
+        for i, log_entry in enumerate(reversed(recent_logs)):
+            with st.container():
+                col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+                
+                with col1:
+                    st.write(f"**{log_entry['name']}**")
+                
+                with col2:
+                    st.write(f"Confidence: {log_entry['confidence']:.1f}%")
+                
+                with col3:
+                    st.write(f"Action: {log_entry['action']}")
+                
+                with col4:
+                    st.write(f"Time: {log_entry['timestamp']}")
+                
+                if log_entry['logged']:
+                    st.success("✅ Logged to attendance")
                 else:
-                    st.warning("Entry was too recent, skipped logging.")
+                    st.warning("⚠️ Not logged (recent entry or low confidence)")
+                
+                st.divider()
+    else:
+        st.info("No automatic detections yet. Start auto detection to begin monitoring.")
+
+def process_automatic_detection(tracker, picture, confidence_threshold, max_logs):
+    """Process automatic detection from camera feed"""
+    try:
+        # Convert to OpenCV format
+        image = Image.open(picture)
+        image_array = np.array(image)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        
+        # Detect faces
+        temp_path = f"temp_auto_{time.time()}.jpg"
+        cv2.imwrite(temp_path, image_array)
+        
+        faces = DeepFace.extract_faces(
+            img_path=temp_path,
+            detector_backend=tracker.detection_backend,
+            enforce_detection=False
+        )
+        
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        
+        if faces:
+            for i, face in enumerate(faces):
+                if isinstance(face, dict):
+                    face_array = (face['face'] * 255).astype(np.uint8)
+                else:
+                    face_array = (face * 255).astype(np.uint8)
+                
+                # Get embedding
+                embedding = tracker.extract_face_embedding(face_array)
+                
+                if embedding is not None:
+                    # Recognize face
+                    name, confidence = tracker.recognize_face_from_embedding(embedding)
+                    
+                    if name != "Unknown" and confidence > (confidence_threshold * 100):
+                        action = tracker.determine_action(name)
+                        
+                        # Try to log attendance automatically
+                        success = tracker.log_attendance(name, action, confidence)
+                        
+                        # Add to detection log
+                        log_entry = {
+                            'name': name,
+                            'confidence': confidence,
+                            'action': action,
+                            'logged': success,
+                            'timestamp': datetime.datetime.now().strftime("%H:%M:%S")
+                        }
+                        
+                        # Add to session state log (keep only recent entries)
+                        st.session_state.auto_detection_logs.append(log_entry)
+                        if len(st.session_state.auto_detection_logs) > max_logs * 2:
+                            st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-max_logs:]
+                        
+                        # Show immediate notification
+                        if success:
+                            st.toast(f"✅ {name} - {action} logged!", icon="✅")
+                        else:
+                            st.toast(f"⚠️ {name} detected but not logged (too recent)", icon="⚠️")
+    
+    except Exception as e:
+        st.error(f"Auto detection error: {e}")
 
 def show_reports(tracker):
     """Show attendance reports"""
