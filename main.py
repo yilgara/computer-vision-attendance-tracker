@@ -66,6 +66,7 @@ class StreamlitAttendanceTracker:
             st.session_state.camera_active = False
         if 'attendance_logs' not in st.session_state:
             st.session_state.attendance_logs = []
+        
     
     def init_directories(self):
         """Create necessary directories"""
@@ -259,8 +260,7 @@ def show_dashboard(tracker):
     """Show dashboard with system overview"""
     st.header("System Dashboard")
     
-    # Load existing data
-    tracker.load_embeddings()
+    
     
     # Metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -314,12 +314,12 @@ def show_employee_management(tracker):
             accept_multiple_files=True,
             help="Upload multiple clear photos of the employee for better recognition"
         )
-        st.write(tracker.known_names)
+     
         
         if st.button("Add Employee", type="primary"):
             
             if employee_name and uploaded_files:
-                tracker.load_embeddings()
+              
                 # Create employee folder
                 employee_folder = os.path.join(tracker.employees_folder, employee_name)
                 os.makedirs(employee_folder, exist_ok=True)
@@ -356,13 +356,11 @@ def show_employee_management(tracker):
                     progress_bar.progress((i + 1) / len(uploaded_files))
                 
                 # Add to tracker
-                
-                st.write(names_to_add)
+              
                 tracker.known_embeddings.extend(embeddings_to_add)
                 tracker.known_names.extend(names_to_add)
-                st.write(tracker.known_names)
                 tracker.save_embeddings()
-                st.write(tracker.known_names)
+          
                 
                 st.success(f"Added {employee_name} with {len(embeddings_to_add)} face embeddings!")
                 status_text.empty()
