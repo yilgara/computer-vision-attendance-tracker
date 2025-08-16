@@ -343,6 +343,8 @@ def show_employee_management(tracker):
                     progress_bar.progress((i + 1) / len(uploaded_files))
                 
                 # Add to tracker
+                st.write(tracker.known_names)
+                st.write(names_to_add)
                 tracker.known_embeddings.extend(embeddings_to_add)
                 tracker.known_names.extend(names_to_add)
                 st.write(tracker.known_names)
