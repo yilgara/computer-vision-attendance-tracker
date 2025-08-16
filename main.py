@@ -54,6 +54,7 @@ class StreamlitAttendanceTracker:
         
         # Initialize CSV
         self.init_csv()
+        tracker.load_embeddings()
     
     def init_session_state(self):
         """Initialize Streamlit session state variables"""
@@ -307,8 +308,9 @@ def show_employee_management(tracker):
         st.write(tracker.known_names)
         
         if st.button("Add Employee", type="primary"):
-            st.write(tracker.known_names)
+            
             if employee_name and uploaded_files:
+                tracker.load_embeddings()
                 # Create employee folder
                 employee_folder = os.path.join(tracker.employees_folder, employee_name)
                 os.makedirs(employee_folder, exist_ok=True)
