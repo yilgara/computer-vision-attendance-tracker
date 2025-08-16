@@ -22,7 +22,6 @@ warnings.filterwarnings("ignore")
 # Page configuration
 st.set_page_config(
     page_title="Employee Attendance System",
-    page_icon="👥",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -306,67 +305,75 @@ def show_employee_management(tracker):
     
     with tab1:
         st.subheader("Add New Employee")
+
+        with st.form("add_employee_form", clear_on_submit=True):
+            employee_name = st.text_input("Employee Name", placeholder="Enter full name")
+            uploaded_files = st.file_uploader(
+                "Upload Employee Photos", 
+                type=['png', 'jpg', 'jpeg'], 
+                accept_multiple_files=True,
+                help="Upload multiple clear photos of the employee for better recognition"
+            )
         
-        employee_name = st.text_input("Employee Name", placeholder="Enter full name")
-        uploaded_files = st.file_uploader(
-            "Upload Employee Photos", 
-            type=['png', 'jpg', 'jpeg'], 
-            accept_multiple_files=True,
-            help="Upload multiple clear photos of the employee for better recognition"
-        )
-     
-        
-        if st.button("Add Employee", type="primary"):
-            
-            if employee_name and uploaded_files:
+            if st.button("Add Employee", type="primary"):
+                
+                if employee_name and uploaded_files:
+                  
+                    # Create employee folder
+                    employee_folder = os.path.join(tracker.employees_folder, employee_name)
+                    os.makedirs(employee_folder, exist_ok=True)
+                    
+                    # Save uploaded files
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    embeddings_to_add = []
+                    names_to_add = []
+                    
+                    for i, uploaded_file in enumerate(uploaded_files):
+                        # Save file
+                        file_path = os.path.join(employee_folder, uploaded_file.name)
+                        image = Image.open(uploaded_file)
+                        image_array = np.array(image)
+                        
+                        if len(image_array.shape) == 3:
+                            image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+                        
+                        cv2.imwrite(file_path, image_array)
+                        
+                        # Extract embedding
+                        status_text.text(f"Processing {uploaded_file.name}...")
+                        embedding = tracker.extract_face_embedding(image_array)
+                        
+                        if embedding is not None:
+                            embeddings_to_add.append(embedding)
+                            names_to_add.append(employee_name)
+                            status_text.text(f"✅ Processed {uploaded_file.name}")
+                        else:
+                            status_text.text(f"⚠️ No face found in {uploaded_file.name}")
+                        
+                        progress_bar.progress((i + 1) / len(uploaded_files))
+                    
+                    # Add to tracker
+                  
+                    tracker.known_embeddings.extend(embeddings_to_add)
+                    tracker.known_names.extend(names_to_add)
+                    tracker.save_embeddings()
+
+
+                    success_container = st.empty()
+                    success_container.success(f"Added {employee_name} with {len(embeddings_to_add)} face embeddings!")
+                    
+                    # Clean up progress indicators
+                    status_text.empty()
+                    progress_bar.empty()
+                    
+                    # Clear success message after 3 seconds
+                    time.sleep(3)
+                    success_container.empty()
               
-                # Create employee folder
-                employee_folder = os.path.join(tracker.employees_folder, employee_name)
-                os.makedirs(employee_folder, exist_ok=True)
-                
-                # Save uploaded files
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                embeddings_to_add = []
-                names_to_add = []
-                
-                for i, uploaded_file in enumerate(uploaded_files):
-                    # Save file
-                    file_path = os.path.join(employee_folder, uploaded_file.name)
-                    image = Image.open(uploaded_file)
-                    image_array = np.array(image)
-                    
-                    if len(image_array.shape) == 3:
-                        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
-                    
-                    cv2.imwrite(file_path, image_array)
-                    
-                    # Extract embedding
-                    status_text.text(f"Processing {uploaded_file.name}...")
-                    embedding = tracker.extract_face_embedding(image_array)
-                    
-                    if embedding is not None:
-                        embeddings_to_add.append(embedding)
-                        names_to_add.append(employee_name)
-                        status_text.text(f"✅ Processed {uploaded_file.name}")
-                    else:
-                        status_text.text(f"⚠️ No face found in {uploaded_file.name}")
-                    
-                    progress_bar.progress((i + 1) / len(uploaded_files))
-                
-                # Add to tracker
-              
-                tracker.known_embeddings.extend(embeddings_to_add)
-                tracker.known_names.extend(names_to_add)
-                tracker.save_embeddings()
-          
-                
-                st.success(f"Added {employee_name} with {len(embeddings_to_add)} face embeddings!")
-                status_text.empty()
-                progress_bar.empty()
-            else:
-                st.error("Please provide employee name and photos.")
+                else:
+                    st.error("Please provide employee name and photos.")
     
     with tab2:
         st.subheader("Registered Employees")
