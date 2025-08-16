@@ -217,13 +217,22 @@ class StreamlitAttendanceTracker:
             st.error(f"Error saving embeddings: {e}")
             return False
 
+
+
+def get_tracker():
+    """Get or create tracker instance using Streamlit session state"""
+    if 'attendance_tracker' not in st.session_state:
+        st.session_state.attendance_tracker = StreamlitAttendanceTracker()
+    return st.session_state.attendance_tracker
+
+
 def main():
     """Main Streamlit application"""
     st.title("👥 Employee Attendance Tracking System")
     st.markdown("---")
     
     # Initialize tracker
-    tracker = StreamlitAttendanceTracker()
+    tracker = get_tracker()
     
     # Sidebar
     st.sidebar.title("Navigation")
