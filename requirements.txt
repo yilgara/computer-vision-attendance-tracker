@@ -14,5 +14,4 @@ opencv-python-headless
 
 # Streamlit
 streamlit
-streamlit-webrtc
 
