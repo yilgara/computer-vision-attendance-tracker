@@ -659,11 +659,17 @@ def show_automatic_recognition(tracker):
 
     # start WebRTC stream
     webrtc_streamer(
-        key="auto",
-        mode=WebRtcMode.SENDRECV,
-        video_processor_factory=lambda: VideoProcessor(tracker, confidence_threshold, max_logs),
-        media_stream_constraints={"video": True, "audio": False}
-    )
+    key="auto",
+    mode=WebRtcMode.SENDRECV,
+    rtc_configuration={
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+
+        ]
+    },
+    media_stream_constraints={"video": True, "audio": False},
+    video_processor_factory=VideoProcessor
+)
 
     # Show logs in UI
     st.subheader("📝 Automatic Detection Log")
