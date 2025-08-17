@@ -668,8 +668,7 @@ def show_automatic_recognition(tracker):
             {"urls": ["turn:openrelay.metered.ca:80"], "username": "openrelayproject", "credential": "openrelayproject"},
         ]
     },
-    media_stream_constraints={"video": True, "audio": False}
-    )
+    media_stream_constraints={"video": True, "audio": False})
 
     # Show logs in UI
     st.subheader("📝 Automatic Detection Log")
