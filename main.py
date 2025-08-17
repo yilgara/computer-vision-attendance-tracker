@@ -13,7 +13,7 @@ import warnings
 import tempfile
 import shutil
 from PIL import Image
-import io
+
 import zipfile
 
 
