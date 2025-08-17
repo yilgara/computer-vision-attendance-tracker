@@ -93,6 +93,7 @@ def show_employee_management(tracker):
         st.subheader("Registered Employees")
         
         # Load embeddings 
+        st.write("h")
         if not tracker.load_embeddings():
             st.warning("No trained face embeddings found. Please add employees first.")
             return
