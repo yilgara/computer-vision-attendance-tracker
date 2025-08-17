@@ -602,81 +602,7 @@ def show_manual_recognition(tracker):
 
 
 
-def show_manual_recognition(tracker):
-    """Manual recognition mode - existing functionality"""
-    st.subheader("📷 Manual Camera Input")
-    st.info("Take a picture when ready, then manually approve attendance logging.")
-    
-    # Use Streamlit's camera input
-    picture = st.camera_input("Take a picture for face recognition")
-    
-    if picture is not None:
-        # Convert to OpenCV format
-        image = Image.open(picture)
-        image_array = np.array(image)
-        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
-        
-        # Process image
-        with st.spinner("Processing image..."):
-            try:
-                # Detect faces
-                temp_path = "temp_camera.jpg"
-                cv2.imwrite(temp_path, image_array)
-                
-                faces = DeepFace.extract_faces(
-                    img_path=temp_path,
-                    detector_backend=tracker.detection_backend,
-                    enforce_detection=False
-                )
-                
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-                
-                if faces:
-                    st.success(f"Found {len(faces)} face(s)")
-                    
-                    # Process each face
-                    for i, face in enumerate(faces):
-                        if isinstance(face, dict):
-                            face_array = (face['face'] * 255).astype(np.uint8)
-                        else:
-                            face_array = (face * 255).astype(np.uint8)
-                        
-                        # Get embedding
-                        embedding = tracker.extract_face_embedding(face_array)
-                        
-                        if embedding is not None:
-                            # Recognize face
-                            name, confidence = tracker.recognize_face_from_embedding(embedding)
-                            
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                st.image(face_array, caption=f"Face {i+1}", width=200)
-                            
-                            with col2:
-                                st.write(f"**Recognition Result:**")
-                                st.write(f"Name: {name}")
-                                st.write(f"Confidence: {confidence:.1f}%")
-                                
-                                if name != "Unknown" and confidence > (tracker.similarity_threshold * 100):
-                                    action = tracker.determine_action(name)
-                                    
-                                    if st.button(f"Log {action} for {name}", key=f"log_{i}"):
-                                        success = tracker.log_attendance(name, action, confidence)
-                                        if success:
-                                            st.success(f"Logged {action} for {name}!")
-                                        else:
-                                            st.warning("Entry was too recent, skipped logging.")
-                                else:
-                                    st.warning("Confidence too low or unknown person")
-                        else:
-                            st.error(f"Could not process face {i+1}")
-                else:
-                    st.warning("No faces detected in the image")
-                    
-            except Exception as e:
-                st.error(f"Error processing image: {e}")
+
 
 def get_camera_html(detection_interval):
     """Generate HTML/JS for automatic camera capture"""
@@ -758,7 +684,7 @@ def get_camera_html(detection_interval):
     """
 
 def show_automatic_recognition(tracker):
-    """Automatic recognition mode with continuous detection"""
+    """Automatic recognition mode with continuous detection and debugging"""
     st.subheader("🔄 Automatic Recognition Mode")
     st.info("Camera will continuously monitor for faces and automatically log attendance.")
     
@@ -769,6 +695,10 @@ def show_automatic_recognition(tracker):
         st.session_state.auto_detection_logs = []
     if 'last_processed_timestamp' not in st.session_state:
         st.session_state.last_processed_timestamp = 0
+    if 'debug_images' not in st.session_state:
+        st.session_state.debug_images = []
+    if 'debug_info' not in st.session_state:
+        st.session_state.debug_info = []
     
     # Auto mode settings
     col1, col2, col3 = st.columns(3)
@@ -801,12 +731,27 @@ def show_automatic_recognition(tracker):
             help="Maximum automatic detections to show"
         )
     
-    # Control buttons
+    # DEBUG CONTROLS
+    st.subheader("🐛 Debug Controls")
     col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        debug_mode = st.checkbox("Enable Debug Mode", value=True)
+    
+    with col2:
+        show_raw_images = st.checkbox("Show Raw Captured Images", value=True)
+    
+    with col3:
+        max_debug_images = st.number_input("Max Debug Images:", min_value=1, max_value=10, value=3)
+    
+    # Control buttons
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         if st.button("▶️ Start Auto Detection", type="primary"):
             st.session_state.auto_mode_active = True
+            st.session_state.debug_images = []  # Clear debug images
+            st.session_state.debug_info = []    # Clear debug info
             st.rerun()
     
     with col2:
@@ -819,12 +764,18 @@ def show_automatic_recognition(tracker):
             st.session_state.auto_detection_logs = []
             st.rerun()
     
+    with col4:
+        if st.button("🧹 Clear Debug Data"):
+            st.session_state.debug_images = []
+            st.session_state.debug_info = []
+            st.rerun()
+    
     # Show camera interface
     if st.session_state.auto_mode_active:
         st.success("🟢 Auto Detection Active")
         
         # Display automatic camera capture
-        camera_html = get_camera_html(detection_interval)
+        camera_html = get_camera_html_with_debug(detection_interval, debug_mode)
         components.html(camera_html, height=600)
         
         # Handle captured images via JavaScript message
@@ -836,7 +787,14 @@ def show_automatic_recognition(tracker):
             # Only process if it's a new capture
             if current_timestamp > st.session_state.last_processed_timestamp:
                 st.session_state.last_processed_timestamp = current_timestamp
-                process_captured_frame(tracker, captured_image, auto_confidence_threshold, max_auto_logs)
+                
+                if debug_mode:
+                    st.write(f"🔍 **DEBUG**: Processing new frame at timestamp: {current_timestamp}")
+                
+                process_captured_frame_with_debug(
+                    tracker, captured_image, auto_confidence_threshold, 
+                    max_auto_logs, debug_mode, show_raw_images, max_debug_images
+                )
         
         # Auto-refresh to handle new captures
         time.sleep(0.5)
@@ -846,489 +804,415 @@ def show_automatic_recognition(tracker):
         st.info("🔴 Auto Detection Stopped")
         st.write("Click 'Start Auto Detection' to begin continuous monitoring.")
     
+    # Show debug information
+    if debug_mode:
+        show_debug_information()
+    
+    # Show raw captured images if enabled
+    if show_raw_images and st.session_state.debug_images:
+        show_debug_images(max_debug_images)
+    
     # Display automatic detection logs
     display_detection_logs(max_auto_logs)
 
 
+def get_camera_html_with_debug(detection_interval, debug_mode):
+    """Generate HTML/JS for automatic camera capture with debug features"""
+    debug_console = "true" if debug_mode else "false"
+    
+    return f"""
+    <div id="camera-container">
+        <video id="camera-feed" autoplay playsinline style="width: 100%; max-width: 640px; height: auto; border-radius: 10px;"></video>
+        <canvas id="capture-canvas" style="display: none;"></canvas>
+        <div id="camera-status" style="margin-top: 10px; padding: 10px; background: #f0f2f6; border-radius: 5px;">
+            <p id="status-text">Initializing camera...</p>
+            <p id="debug-text" style="font-size: 12px; color: #666;"></p>
+        </div>
+    </div>
 
-def diagnose_tracker_object(tracker):
-    """Comprehensive diagnosis of the tracker object"""
-    st.subheader("🔧 Tracker Object Diagnosis")
-    
-    # Check if tracker exists
-    if tracker is None:
-        st.error("❌ Tracker object is None!")
-        return False
-    
-    st.success("✅ Tracker object exists")
-    
-    # Check tracker attributes
-    st.write("**Tracker Attributes:**")
-    
-    # Check for known_embeddings
-    if hasattr(tracker, 'known_embeddings'):
-        if tracker.known_embeddings:
-            st.success(f"✅ known_embeddings: {len(tracker.known_embeddings)} embeddings found")
-        else:
-            st.error("❌ known_embeddings exists but is empty!")
-    else:
-        st.error("❌ Tracker has no 'known_embeddings' attribute!")
-    
-    # Check for known_names
-    if hasattr(tracker, 'known_names'):
-        if tracker.known_names:
-            st.success(f"✅ known_names: {len(tracker.known_names)} names found")
-            st.write(f"Names: {list(set(tracker.known_names))}")
-        else:
-            st.error("❌ known_names exists but is empty!")
-    else:
-        st.error("❌ Tracker has no 'known_names' attribute!")
-    
-    # Check essential methods
-    essential_methods = [
-        'extract_face_embedding',
-        'recognize_face_from_embedding', 
-        'determine_action',
-        'log_attendance',
-        'load_embeddings'
-    ]
-    
-    st.write("**Required Methods:**")
-    missing_methods = []
-    
-    for method in essential_methods:
-        if hasattr(tracker, method):
-            st.success(f"✅ {method}")
-        else:
-            st.error(f"❌ {method}")
-            missing_methods.append(method)
-    
-    # Check other important attributes
-    other_attributes = [
-        'similarity_threshold',
-        'detection_backend',
-        'model_name'
-    ]
-    
-    st.write("**Other Attributes:**")
-    for attr in other_attributes:
-        if hasattr(tracker, attr):
-            value = getattr(tracker, attr)
-            st.success(f"✅ {attr}: {value}")
-        else:
-            st.warning(f"⚠️ {attr}: Not found")
-    
-    # Show all attributes of the tracker
-    with st.expander("🔍 All Tracker Attributes"):
-        all_attrs = [attr for attr in dir(tracker) if not attr.startswith('_')]
-        for attr in all_attrs:
-            try:
-                value = getattr(tracker, attr)
-                if callable(value):
-                    st.write(f"**{attr}()** - Method")
-                else:
-                    st.write(f"**{attr}** = {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}")
-            except Exception as e:
-                st.write(f"**{attr}** - Error accessing: {str(e)}")
-    
-    return len(missing_methods) == 0
+    <script>
+    let video = document.getElementById('camera-feed');
+    let canvas = document.getElementById('capture-canvas');
+    let context = canvas.getContext('2d');
+    let statusText = document.getElementById('status-text');
+    let debugText = document.getElementById('debug-text');
+    let isCapturing = false;
+    let captureCount = 0;
+    const debugMode = {debug_console};
 
-def test_face_detection_pipeline():
-    """Test the complete face detection pipeline step by step"""
-    st.subheader("🧪 Face Detection Pipeline Test")
+    function debugLog(message) {{
+        if (debugMode) {{
+            console.log('[DEBUG]', message);
+            debugText.textContent = `Debug: ${{message}} (Captures: ${{captureCount}})`;
+        }}
+    }}
+
+    // Initialize camera
+    async function initCamera() {{
+        try {{
+            debugLog('Requesting camera access...');
+            
+            const constraints = {{
+                video: {{
+                    width: {{ ideal: 640 }},
+                    height: {{ ideal: 480 }},
+                    facingMode: 'user'
+                }}
+            }};
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+            statusText.textContent = '🟢 Camera active - Automatic detection enabled';
+            statusText.style.color = 'green';
+            
+            debugLog('Camera initialized successfully');
+            
+            // Wait for video to be ready
+            video.onloadedmetadata = function() {{
+                debugLog(`Video dimensions: ${{video.videoWidth}}x${{video.videoHeight}}`);
+                startAutoCapture();
+            }};
+            
+        }} catch (err) {{
+            console.error('Camera access error:', err);
+            statusText.textContent = '🔴 Camera access denied or not available';
+            statusText.style.color = 'red';
+            debugLog(`Camera error: ${{err.message}}`);
+        }}
+    }}
+
+    function startAutoCapture() {{
+        if (isCapturing) return;
+        isCapturing = true;
+        
+        debugLog(`Starting auto capture with ${{detection_interval}}s interval`);
+        
+        setInterval(() => {{
+            if (video.videoWidth > 0 && video.videoHeight > 0) {{
+                captureFrame();
+            }} else {{
+                debugLog('Video not ready, skipping frame');
+            }}
+        }}, {detection_interval * 1000});
+    }}
+
+    function captureFrame() {{
+        try {{
+            captureCount++;
+            debugLog(`Capturing frame #${{captureCount}}`);
+            
+            // Set canvas dimensions to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            debugLog(`Canvas set to ${{canvas.width}}x${{canvas.height}}`);
+            
+            // Draw current frame
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Convert to base64
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            const imageSizeKB = Math.round(imageData.length / 1024);
+            
+            debugLog(`Image captured: ${{imageSizeKB}}KB`);
+            
+            // Send to Streamlit
+            window.parent.postMessage({{
+                type: 'camera-capture',
+                image: imageData,
+                timestamp: Date.now(),
+                frameNumber: captureCount,
+                dimensions: {{
+                    width: canvas.width,
+                    height: canvas.height
+                }},
+                sizeKB: imageSizeKB
+            }}, '*');
+            
+            debugLog('Frame sent to Streamlit');
+            
+        }} catch (error) {{
+            console.error('Capture error:', error);
+            debugLog(`Capture error: ${{error.message}}`);
+        }}
+    }}
+
+    // Initialize on load
+    initCamera();
+    </script>
+    """
+
+
+def process_captured_frame_with_debug(tracker, image_data, confidence_threshold, max_logs, debug_mode, show_raw_images, max_debug_images):
+    """Process automatically captured frame with comprehensive debugging"""
+    debug_info = {
+        'timestamp': datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3],
+        'step': 'Starting',
+        'error': None,
+        'faces_detected': 0,
+        'recognition_results': []
+    }
     
-    # Create a test image with a face
-    uploaded_file = st.file_uploader("Upload a test image with a clear face", type=['jpg', 'jpeg', 'png'])
-    
-    if uploaded_file is not None:
-        # Display the uploaded image
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Test Image", width=400)
+    try:
+        if debug_mode:
+            st.write(f"🔍 **DEBUG Step 1**: Starting frame processing at {debug_info['timestamp']}")
+        
+        debug_info['step'] = 'Decoding image'
+        
+        # Decode base64 image
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+        
+        image_bytes = base64.b64decode(image_data)
+        debug_info['image_size_bytes'] = len(image_bytes)
+        
+        if debug_mode:
+            st.write(f"🔍 **DEBUG Step 2**: Decoded base64 image, size: {debug_info['image_size_bytes']} bytes")
+        
+        debug_info['step'] = 'Converting to OpenCV'
         
         # Convert to OpenCV format
-        image_array = np.array(image)
-        if len(image_array.shape) == 3:
-            image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        image_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        st.write("**Step 1: Image Conversion**")
-        st.success(f"✅ Image converted to OpenCV format: {image_array.shape}")
+        if image_array is None:
+            debug_info['error'] = 'Failed to decode image to OpenCV format'
+            if debug_mode:
+                st.error(f"🔍 **DEBUG ERROR**: {debug_info['error']}")
+            return
         
-        # Test different detection backends
-        backends = ['opencv', 'ssd', 'mtcnn', 'retinaface', 'mediapipe']
+        debug_info['image_shape'] = image_array.shape
         
-        for backend in backends:
-            st.write(f"**Step 2: Testing {backend} backend**")
+        if debug_mode:
+            st.write(f"🔍 **DEBUG Step 3**: Converted to OpenCV format, shape: {debug_info['image_shape']}")
+        
+        # Store raw image for debugging
+        if show_raw_images:
+            # Convert BGR to RGB for display
+            rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+            st.session_state.debug_images.append({
+                'image': rgb_image,
+                'timestamp': debug_info['timestamp'],
+                'shape': debug_info['image_shape']
+            })
+            # Keep only recent debug images
+            if len(st.session_state.debug_images) > max_debug_images:
+                st.session_state.debug_images = st.session_state.debug_images[-max_debug_images:]
+        
+        debug_info['step'] = 'Writing temporary file'
+        
+        # Detect faces
+        temp_path = f"temp_auto_{time.time()}.jpg"
+        cv2.imwrite(temp_path, image_array)
+        
+        if debug_mode:
+            st.write(f"🔍 **DEBUG Step 4**: Wrote temporary file: {temp_path}")
+        
+        debug_info['step'] = 'DeepFace face detection'
+        
+        try:
+            faces = DeepFace.extract_faces(
+                img_path=temp_path,
+                detector_backend=tracker.detection_backend,
+                enforce_detection=False
+            )
+            debug_info['faces_detected'] = len(faces) if faces else 0
             
-            try:
-                # Save to temporary file
-                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
-                    temp_path = tmp_file.name
-                
-                success = cv2.imwrite(temp_path, image_array)
-                
-                if not success:
-                    st.error(f"❌ Failed to save image for {backend}")
-                    continue
-                
-                st.success(f"✅ Image saved to temporary file")
-                
-                # Extract faces
-                faces = DeepFace.extract_faces(
-                    img_path=temp_path,
-                    detector_backend=backend,
-                    enforce_detection=False
-                )
-                
-                # Clean up
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-                
-                if faces and len(faces) > 0:
-                    st.success(f"✅ {backend}: Detected {len(faces)} face(s)")
-                    
-                    # Show detected faces
-                    for i, face in enumerate(faces):
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            if isinstance(face, dict):
-                                face_array = (face['face'] * 255).astype(np.uint8)
-                            else:
-                                face_array = (face * 255).astype(np.uint8)
-                            
-                            st.image(face_array, caption=f"Face {i+1} ({backend})", width=150)
-                        
-                        with col2:
-                            st.write(f"Face shape: {face_array.shape}")
-                            st.write(f"Face type: {type(face_array)}")
-                            st.write(f"Face dtype: {face_array.dtype}")
-                            
-                        # This is where we would test embedding extraction
-                        st.write(f"**Step 3: Ready for embedding extraction with {backend}**")
-                        
-                        return backend, face_array  # Return successful backend and face for further testing
-                        
-                else:
-                    st.error(f"❌ {backend}: No faces detected")
-                    
-            except Exception as e:
-                st.error(f"❌ {backend}: Error - {str(e)}")
-    
-    return None, None
-
-def test_embedding_extraction(tracker, face_array):
-    """Test embedding extraction with the tracker"""
-    st.subheader("🔍 Embedding Extraction Test")
-    
-    if face_array is None:
-        st.warning("No face array provided. Run face detection test first.")
-        return None
-    
-    try:
-        st.write("**Testing tracker.extract_face_embedding()**")
+            if debug_mode:
+                st.write(f"🔍 **DEBUG Step 5**: DeepFace detected {debug_info['faces_detected']} faces")
         
-        # Test embedding extraction
-        embedding = tracker.extract_face_embedding(face_array)
+        except Exception as deepface_error:
+            debug_info['error'] = f'DeepFace error: {str(deepface_error)}'
+            if debug_mode:
+                st.error(f"🔍 **DEBUG ERROR**: {debug_info['error']}")
+            return
         
-        if embedding is not None:
-            st.success(f"✅ Embedding extracted successfully!")
-            st.write(f"Embedding shape: {embedding.shape if hasattr(embedding, 'shape') else 'No shape attr'}")
-            st.write(f"Embedding type: {type(embedding)}")
-            st.write(f"Embedding sample: {str(embedding)[:100]}...")
-            return embedding
-        else:
-            st.error("❌ extract_face_embedding returned None")
-            
-            # Try to debug why
-            st.write("**Debugging embedding extraction:**")
-            
-            # Check if it's a method
-            if not hasattr(tracker, 'extract_face_embedding'):
-                st.error("Tracker has no extract_face_embedding method")
-            elif not callable(getattr(tracker, 'extract_face_embedding')):
-                st.error("extract_face_embedding is not callable")
-            else:
-                st.write("extract_face_embedding method exists and is callable")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                if debug_mode:
+                    st.write(f"🔍 **DEBUG**: Cleaned up temporary file")
+        
+        debug_info['step'] = 'Processing faces'
+        
+        if faces:
+            for i, face in enumerate(faces):
+                face_debug = {'face_index': i}
                 
-                # Try with different face array formats
-                st.write("Trying different face array formats...")
-                
-                # Try as float
                 try:
-                    face_float = face_array.astype(np.float32) / 255.0
-                    embedding = tracker.extract_face_embedding(face_float)
-                    if embedding is not None:
-                        st.success("✅ Works with float32 normalized array")
-                        return embedding
-                except Exception as e:
-                    st.write(f"Float32 format failed: {str(e)}")
-                
-                # Try with PIL Image
-                try:
-                    face_pil = Image.fromarray(cv2.cvtColor(face_array, cv2.COLOR_BGR2RGB))
-                    embedding = tracker.extract_face_embedding(face_pil)
-                    if embedding is not None:
-                        st.success("✅ Works with PIL Image")
-                        return embedding
-                except Exception as e:
-                    st.write(f"PIL Image format failed: {str(e)}")
-            
-            return None
-            
-    except Exception as e:
-        st.error(f"❌ Error in embedding extraction: {str(e)}")
-        
-        # Show full traceback
-        import traceback
-        st.code(traceback.format_exc())
-        
-        return None
-
-def test_face_recognition(tracker, embedding):
-    """Test face recognition with the embedding"""
-    st.subheader("🎯 Face Recognition Test")
-    
-    if embedding is None:
-        st.warning("No embedding provided. Run embedding extraction test first.")
-        return None, None
-    
-    try:
-        st.write("**Testing tracker.recognize_face_from_embedding()**")
-        
-        # Test recognition
-        name, confidence = tracker.recognize_face_from_embedding(embedding)
-        
-        st.success(f"✅ Recognition completed!")
-        st.write(f"**Name:** {name}")
-        st.write(f"**Confidence:** {confidence}")
-        st.write(f"**Name type:** {type(name)}")
-        st.write(f"**Confidence type:** {type(confidence)}")
-        
-        return name, confidence
-        
-    except Exception as e:
-        st.error(f"❌ Error in face recognition: {str(e)}")
-        
-        # Show full traceback
-        import traceback
-        st.code(traceback.format_exc())
-        
-        return None, None
-
-def test_attendance_logging(tracker, name, confidence):
-    """Test attendance logging"""
-    st.subheader("📝 Attendance Logging Test")
-    
-    if name is None or confidence is None:
-        st.warning("No name/confidence provided. Run face recognition test first.")
-        return
-    
-    try:
-        if name == "Unknown":
-            st.info("Cannot test logging with Unknown person")
-            return
-        
-        st.write("**Testing tracker.determine_action()**")
-        action = tracker.determine_action(name)
-        st.success(f"✅ Action determined: {action}")
-        
-        st.write("**Testing tracker.log_attendance()**")
-        
-        # Show what would be logged
-        st.write(f"Would log: {action} for {name} with {confidence} confidence")
-        
-        if st.button("Actually Log This Attendance"):
-            success = tracker.log_attendance(name, action, confidence)
-            
-            if success:
-                st.success(f"✅ Successfully logged {action} for {name}!")
-            else:
-                st.warning("⚠️ Logging returned False (might be too recent)")
-        
-    except Exception as e:
-        st.error(f"❌ Error in attendance logging: {str(e)}")
-        
-        # Show full traceback
-        import traceback
-        st.code(traceback.format_exc())
-
-def show_complete_diagnostic(tracker):
-    """Show complete diagnostic interface"""
-    st.header("🔧 Complete Face Recognition Diagnostic")
-    st.info("This will help identify exactly what's wrong with your face recognition system")
-    
-    # Step 1: Diagnose tracker
-    st.markdown("---")
-    tracker_ok = diagnose_tracker_object(tracker)
-    
-    if not tracker_ok:
-        st.error("🛑 Tracker object has missing methods. Fix tracker first before proceeding.")
-        return
-    
-    # Step 2: Test face detection
-    st.markdown("---")
-    backend, face_array = test_face_detection_pipeline()
-    
-    if face_array is None:
-        st.warning("🛑 Face detection failed. Upload a clear image with a visible face.")
-        return
-    
-    # Step 3: Test embedding extraction
-    st.markdown("---")
-    embedding = test_embedding_extraction(tracker, face_array)
-    
-    if embedding is None:
-        st.error("🛑 Embedding extraction failed. Check tracker's extract_face_embedding method.")
-        return
-    
-    # Step 4: Test face recognition
-    st.markdown("---")
-    name, confidence = test_face_recognition(tracker, embedding)
-    
-    if name is None:
-        st.error("🛑 Face recognition failed. Check tracker's recognize_face_from_embedding method.")
-        return
-    
-    # Step 5: Test attendance logging
-    st.markdown("---")
-    test_attendance_logging(tracker, name, confidence)
-    
-    # Final summary
-    st.markdown("---")
-    st.subheader("📋 Diagnostic Summary")
-    
-    if name != "Unknown":
-        st.success("🎉 Complete pipeline working! Face recognition system is functional.")
-        st.info("If automatic detection still doesn't work, the issue is likely in the camera loop or frame processing.")
-    else:
-        st.warning("⚠️ Pipeline works but person not recognized. This means:")
-        st.write("1. Face detection: ✅ Working")
-        st.write("2. Embedding extraction: ✅ Working") 
-        st.write("3. Face recognition: ✅ Working (but person unknown)")
-        st.write("4. Issue: Person not in training data or confidence too low")
-
-def create_simple_test_camera():
-    """Create a simple camera test that manually processes one image"""
-    st.subheader("📸 Simple Camera Test")
-    st.info("Take a photo and manually process it step by step")
-    
-    picture = st.camera_input("Take a test picture")
-    
-    if picture is not None:
-        return picture
-    
-    return None
-
-def process_test_image_step_by_step(tracker, picture):
-    """Process a test image step by step with full debugging"""
-    st.subheader("🔍 Step-by-Step Image Processing")
-    
-    try:
-        # Step 1: Load and convert image
-        st.write("**Step 1: Loading image...**")
-        image = Image.open(picture)
-        st.image(image, caption="Original Image", width=300)
-        
-        image_array = np.array(image)
-        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
-        st.success(f"✅ Image loaded and converted: {image_array.shape}")
-        
-        # Step 2: Save to temporary file
-        st.write("**Step 2: Saving to temporary file...**")
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
-            temp_path = tmp_file.name
-        
-        success = cv2.imwrite(temp_path, image_array)
-        if success:
-            st.success(f"✅ Image saved to: {temp_path}")
-        else:
-            st.error("❌ Failed to save image")
-            return
-        
-        # Step 3: Face detection
-        st.write("**Step 3: Detecting faces...**")
-        
-        backend = st.selectbox("Choose detection backend:", ['opencv', 'ssd', 'mtcnn'], key="test_backend")
-        
-        faces = DeepFace.extract_faces(
-            img_path=temp_path,
-            detector_backend=backend,
-            enforce_detection=False
-        )
-        
-        # Clean up temp file
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-        
-        if not faces or len(faces) == 0:
-            st.error(f"❌ No faces detected with {backend} backend")
-            return
-        
-        st.success(f"✅ Found {len(faces)} face(s)")
-        
-        # Step 4: Process each face
-        for i, face in enumerate(faces):
-            st.write(f"**Step 4.{i+1}: Processing face {i+1}...**")
-            
-            # Convert face to proper format
-            if isinstance(face, dict):
-                face_array = (face['face'] * 255).astype(np.uint8)
-            else:
-                face_array = (face * 255).astype(np.uint8)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.image(face_array, caption=f"Detected Face {i+1}", width=200)
-            
-            with col2:
-                st.write(f"Face shape: {face_array.shape}")
-                st.write(f"Face dtype: {face_array.dtype}")
-                
-                # Step 5: Extract embedding
-                st.write(f"**Step 5.{i+1}: Extracting embedding...**")
-                
-                embedding = tracker.extract_face_embedding(face_array)
-                
-                if embedding is not None:
-                    st.success("✅ Embedding extracted")
-                    st.write(f"Embedding type: {type(embedding)}")
-                    
-                    # Step 6: Recognize face
-                    st.write(f"**Step 6.{i+1}: Recognizing face...**")
-                    
-                    name, confidence = tracker.recognize_face_from_embedding(embedding)
-                    
-                    st.write(f"**Name:** {name}")
-                    st.write(f"**Confidence:** {confidence:.1f}%")
-                    
-                    # Step 7: Check threshold and determine action
-                    threshold = getattr(tracker, 'similarity_threshold', 0.8) * 100
-                    st.write(f"**Threshold:** {threshold}%")
-                    
-                    if name != "Unknown" and confidence > threshold:
-                        st.success(f"✅ Recognition successful! Above threshold.")
-                        
-                        action = tracker.determine_action(name)
-                        st.write(f"**Action:** {action}")
-                        
-                        # Option to log
-                        if st.button(f"Log {action} for {name}", key=f"log_test_{i}"):
-                            success = tracker.log_attendance(name, action, confidence)
-                            if success:
-                                st.success(f"✅ Successfully logged {action} for {name}!")
-                            else:
-                                st.warning("⚠️ Not logged (too recent or other issue)")
+                    if isinstance(face, dict):
+                        face_array = (face['face'] * 255).astype(np.uint8)
+                        face_debug['face_type'] = 'dict'
                     else:
-                        st.warning(f"⚠️ Below threshold or unknown: {name} ({confidence:.1f}% < {threshold}%)")
+                        face_array = (face * 255).astype(np.uint8)
+                        face_debug['face_type'] = 'array'
+                    
+                    face_debug['face_shape'] = face_array.shape
+                    
+                    if debug_mode:
+                        st.write(f"🔍 **DEBUG Step 6.{i+1}**: Processing face {i+1}, shape: {face_debug['face_shape']}")
+                    
+                    debug_info['step'] = f'Extracting embedding for face {i+1}'
+                    
+                    # Get embedding
+                    embedding = tracker.extract_face_embedding(face_array)
+                    
+                    if embedding is not None:
+                        face_debug['embedding_shape'] = embedding.shape if hasattr(embedding, 'shape') else 'N/A'
+                        
+                        if debug_mode:
+                            st.write(f"🔍 **DEBUG Step 7.{i+1}**: Extracted embedding, shape: {face_debug['embedding_shape']}")
+                        
+                        debug_info['step'] = f'Recognizing face {i+1}'
+                        
+                        # Recognize face
+                        name, confidence = tracker.recognize_face_from_embedding(embedding)
+                        
+                        face_debug.update({
+                            'name': name,
+                            'confidence': confidence,
+                            'above_threshold': confidence > (confidence_threshold * 100)
+                        })
+                        
+                        if debug_mode:
+                            st.write(f"🔍 **DEBUG Step 8.{i+1}**: Recognition result - Name: {name}, Confidence: {confidence:.1f}%")
+                        
+                        if name != "Unknown" and confidence > (confidence_threshold * 100):
+                            action = tracker.determine_action(name)
+                            face_debug['action'] = action
+                            
+                            debug_info['step'] = f'Logging attendance for {name}'
+                            
+                            # Try to log attendance automatically
+                            success = tracker.log_attendance(name, action, confidence)
+                            face_debug['logged'] = success
+                            
+                            if debug_mode:
+                                st.write(f"🔍 **DEBUG Step 9.{i+1}**: Attendance logging - Action: {action}, Success: {success}")
+                            
+                            # Add to detection log
+                            log_entry = {
+                                'name': name,
+                                'confidence': confidence,
+                                'action': action,
+                                'logged': success,
+                                'timestamp': datetime.datetime.now().strftime("%H:%M:%S"),
+                                'face_image': face_array
+                            }
+                            
+                            # Add to session state log (keep only recent entries)
+                            st.session_state.auto_detection_logs.append(log_entry)
+                            if len(st.session_state.auto_detection_logs) > max_logs * 2:
+                                st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-max_logs:]
+                            
+                            # Show immediate notification
+                            if success:
+                                st.toast(f"✅ {name} - {action} logged!", icon="✅")
+                            else:
+                                st.toast(f"⚠️ {name} detected but not logged (too recent)", icon="⚠️")
+                        else:
+                            face_debug['reason_not_logged'] = 'Low confidence or unknown person'
+                            if debug_mode:
+                                st.write(f"🔍 **DEBUG Step 8.{i+1}**: Not logging - {face_debug['reason_not_logged']}")
+                    else:
+                        face_debug['embedding_error'] = 'Failed to extract embedding'
+                        if debug_mode:
+                            st.error(f"🔍 **DEBUG ERROR**: Could not extract embedding for face {i+1}")
                 
-                else:
-                    st.error("❌ Failed to extract embedding")
+                except Exception as face_error:
+                    face_debug['error'] = str(face_error)
+                    if debug_mode:
+                        st.error(f"🔍 **DEBUG ERROR**: Error processing face {i+1}: {face_error}")
+                
+                debug_info['recognition_results'].append(face_debug)
+        
+        else:
+            if debug_mode:
+                st.write("🔍 **DEBUG**: No faces detected in this frame")
+        
+        debug_info['step'] = 'Completed successfully'
     
     except Exception as e:
-        st.error(f"❌ Error in processing: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
+        debug_info['error'] = str(e)
+        debug_info['step'] = f'Failed at step: {debug_info["step"]}'
+        if debug_mode:
+            st.error(f"🔍 **DEBUG ERROR**: Auto detection error at {debug_info['step']}: {e}")
+    
+    finally:
+        # Store debug info
+        st.session_state.debug_info.append(debug_info)
+        # Keep only recent debug info
+        if len(st.session_state.debug_info) > 20:
+            st.session_state.debug_info = st.session_state.debug_info[-20:]
+
+
+def show_debug_information():
+    """Display debug information"""
+    st.subheader("🐛 Debug Information")
+    
+    if st.session_state.debug_info:
+        # Show latest debug info
+        latest_debug = st.session_state.debug_info[-1]
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Latest Processing Info:**")
+            st.json({
+                'timestamp': latest_debug.get('timestamp'),
+                'final_step': latest_debug.get('step'),
+                'faces_detected': latest_debug.get('faces_detected', 0),
+                'image_size_bytes': latest_debug.get('image_size_bytes'),
+                'image_shape': latest_debug.get('image_shape'),
+                'error': latest_debug.get('error')
+            })
+        
+        with col2:
+            st.write("**Recognition Results:**")
+            if latest_debug.get('recognition_results'):
+                for i, result in enumerate(latest_debug['recognition_results']):
+                    st.write(f"Face {i+1}: {result}")
+            else:
+                st.write("No recognition results")
+        
+        # Show processing history
+        with st.expander("Processing History (Last 10)", expanded=False):
+            recent_debug = st.session_state.debug_info[-10:]
+            for i, debug in enumerate(reversed(recent_debug)):
+                status = "✅" if debug.get('error') is None else "❌"
+                st.write(f"{status} **{debug.get('timestamp')}** - {debug.get('step')} - Faces: {debug.get('faces_detected', 0)}")
+                if debug.get('error'):
+                    st.error(f"Error: {debug['error']}")
+    else:
+        st.info("No debug information available yet.")
+
+
+def show_debug_images(max_debug_images):
+    """Display raw captured images for debugging"""
+    st.subheader("📸 Raw Captured Images")
+    
+    if st.session_state.debug_images:
+        st.write(f"Showing last {len(st.session_state.debug_images)} captured frames:")
+        
+        # Create columns for side-by-side display
+        cols = st.columns(min(3, len(st.session_state.debug_images)))
+        
+        for i, debug_img in enumerate(reversed(st.session_state.debug_images)):
+            col_idx = i % len(cols)
+            with cols[col_idx]:
+                st.image(
+                    debug_img['image'], 
+                    caption=f"Captured at {debug_img['timestamp']}\nShape: {debug_img['shape']}", 
+                    width=200
+                )
+    else:
+        st.info("No debug images captured yet.")
+
+
+
+
+
+
 
 
 def process_captured_frame(tracker, image_data, confidence_threshold, max_logs):
