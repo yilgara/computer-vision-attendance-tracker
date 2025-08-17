@@ -502,7 +502,7 @@ def show_live_recognition(tracker):
     if mode == "Manual Mode":
         show_manual_recognition(tracker)
     else:
-        show_automatic_diagnostic(tracker)
+        show_automatic_recognition(tracker)
     
     # Manual entry option
     st.subheader("Manual Entry")
