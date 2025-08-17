@@ -597,92 +597,142 @@ def show_manual_recognition(tracker):
             except Exception as e:
                 st.error(f"Error processing image: {e}")
 
-class VideoProcessor(VideoProcessorBase):
-    def __init__(self, tracker, confidence_threshold=0.8, max_logs=20):
-        self.tracker = tracker
-        self.confidence_threshold = confidence_threshold
-        self.max_logs = max_logs
-        self.frame_count = 0
-
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        self.frame_count += 1
-
-        # process every 10th frame (reduce load)
-        if self.frame_count % 10 == 0:
-            try:
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                faces = DeepFace.extract_faces(
-                    img_path=img_rgb,
-                    detector_backend=self.tracker.detection_backend,
-                    enforce_detection=False
-                )
-                for face in faces:
-                    face_array = (face["face"] * 255).astype(np.uint8)
-                    embedding = self.tracker.extract_face_embedding(face_array)
-                    if embedding is not None:
-                        name, confidence = self.tracker.recognize_face_from_embedding(embedding)
-                        if name != "Unknown" and confidence > (self.confidence_threshold * 100):
-                            action = self.tracker.determine_action(name)
-                            success = self.tracker.log_attendance(name, action, confidence)
-
-                            log_entry = {
-                                "name": name,
-                                "confidence": confidence,
-                                "action": action,
-                                "logged": success,
-                                "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
-                            }
-                            if "auto_detection_logs" not in st.session_state:
-                                st.session_state.auto_detection_logs = []
-                            st.session_state.auto_detection_logs.append(log_entry)
-                            # keep logs short
-                            if len(st.session_state.auto_detection_logs) > self.max_logs * 2:
-                                st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-self.max_logs:]
-
-            except Exception as e:
-                # avoid crashing the loop
-                print("Error in detection:", e)
-
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-
 def show_automatic_recognition(tracker):
-    st.subheader("🔄 Automatic Recognition Mode (WebRTC)")
-
-    if "auto_detection_logs" not in st.session_state:
-        st.session_state.auto_detection_logs = []
-
-    confidence_threshold = st.slider("Auto-log Confidence Threshold:", 0.5, 1.0,
-                                     max(0.8, tracker.similarity_threshold), 0.05)
-    max_logs = st.number_input("Max Auto Logs:", 5, 100, 20)
-
-    # start WebRTC stream
-    webrtc_streamer(
-        key="auto",
-        mode=WebRtcMode.SENDRECV,
-        video_processor_factory=lambda: VideoProcessor(tracker),   # ✅ passes tracker
-        rtc_configuration={
-            "iceServers": [
-                {"urls": ["stun:stun.l.google.com:19302"]},
-                {"urls": ["turn:openrelay.metered.ca:80"], "username": "openrelayproject", "credential": "openrelayproject"},
-            ]
-        },
-        media_stream_constraints={"video": True, "audio": False}
-    )
-
-    # Show logs in UI
-    st.subheader("📝 Automatic Detection Log")
-    for log_entry in reversed(st.session_state.auto_detection_logs[-max_logs:]):
-        cols = st.columns([2, 2, 2, 2])
-        cols[0].write(f"**{log_entry['name']}**")
-        cols[1].write(f"Confidence: {log_entry['confidence']:.1f}%")
-        cols[2].write(f"Action: {log_entry['action']}")
-        cols[3].write(f"Time: {log_entry['timestamp']}")
-        if log_entry["logged"]:
-            st.success("✅ Logged")
+    """WebRTC-based automatic recognition using streamlit-webrtc package"""
+    try:
+        from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
+        import av
+        
+        st.subheader("📹 WebRTC Automatic Recognition")
+        st.info("Uses streamlit-webrtc package for browser-based camera access")
+        
+        # Settings
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            confidence_threshold = st.slider(
+                "WebRTC Confidence Threshold:",
+                min_value=0.5,
+                max_value=1.0,
+                value=0.8,
+                step=0.05,
+                key="webrtc_conf"
+            )
+        
+        with col2:
+            process_every_n_frames = st.number_input(
+                "Process Every N Frames:",
+                min_value=10,
+                max_value=100,
+                value=30,
+                help="Higher = less CPU usage, lower = more responsive"
+            )
+        
+        class FaceRecognitionTransformer(VideoTransformerBase):
+            def __init__(self):
+                self.frame_count = 0
+                self.last_results = []
+            
+            def transform(self, frame):
+                img = frame.to_ndarray(format="bgr24")
+                
+                # Process only every N frames to save CPU
+                self.frame_count += 1
+                if self.frame_count % process_every_n_frames == 0:
+                    self.process_frame_for_recognition(img)
+                
+                # Draw results on frame
+                annotated_img = self.draw_results(img)
+                return av.VideoFrame.from_ndarray(annotated_img, format="bgr24")
+            
+            def process_frame_for_recognition(self, image_array):
+                """Process frame for face recognition"""
+                try:
+                    temp_path = f"temp_webrtc_{time.time()}.jpg"
+                    cv2.imwrite(temp_path, image_array)
+                    
+                    faces = DeepFace.extract_faces(
+                        img_path=temp_path,
+                        detector_backend=tracker.detection_backend,
+                        enforce_detection=False
+                    )
+                    
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                    
+                    self.last_results = []
+                    
+                    if faces:
+                        for face in faces:
+                            if isinstance(face, dict):
+                                face_array = (face['face'] * 255).astype(np.uint8)
+                            else:
+                                face_array = (face * 255).astype(np.uint8)
+                            
+                            embedding = tracker.extract_face_embedding(face_array)
+                            
+                            if embedding is not None:
+                                name, confidence = tracker.recognize_face_from_embedding(embedding)
+                                
+                                result = {
+                                    'name': name,
+                                    'confidence': confidence,
+                                    'timestamp': datetime.datetime.now().strftime("%H:%M:%S")
+                                }
+                                
+                                self.last_results.append(result)
+                                
+                                if name != "Unknown" and confidence > (confidence_threshold * 100):
+                                    action = tracker.determine_action(name)
+                                    success = tracker.log_attendance(name, action, confidence)
+                                    
+                                    if success:
+                                        st.toast(f"✅ {name} - {action} logged!")
+                
+                except Exception as e:
+                    print(f"WebRTC processing error: {e}")
+            
+            def draw_results(self, img):
+                """Draw recognition results on frame"""
+                if self.last_results:
+                    y_offset = 30
+                    for result in self.last_results[-3:]:  # Show last 3 results
+                        text = f"{result['name']} ({result['confidence']:.1f}%)"
+                        cv2.putText(img, text, (10, y_offset), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                        y_offset += 30
+                
+                return img
+        
+        # WebRTC configuration for better connectivity
+        rtc_configuration = RTCConfiguration({
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+        })
+        
+        webrtc_ctx = webrtc_streamer(
+            key="face-recognition-webrtc",
+            video_transformer_factory=FaceRecognitionTransformer,
+            rtc_configuration=rtc_configuration,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+        )
+        
+        if webrtc_ctx.video_transformer:
+            st.success("🟢 WebRTC camera active - Processing frames automatically")
+            
+            # Display recent results
+            if hasattr(webrtc_ctx.video_transformer, 'last_results'):
+                results = webrtc_ctx.video_transformer.last_results
+                if results:
+                    st.subheader("Recent Detections")
+                    for result in results[-5:]:
+                        st.write(f"**{result['name']}** - {result['confidence']:.1f}% at {result['timestamp']}")
         else:
-            st.warning("⚠️ Skipped")
+            st.info("Click 'START' to begin WebRTC recognition")
+    
+    except ImportError:
+        st.error("streamlit-webrtc not installed. Install with: pip install streamlit-webrtc")
+        st.code("pip install streamlit-webrtc")
     
 
 
