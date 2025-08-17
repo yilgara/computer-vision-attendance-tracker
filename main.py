@@ -676,19 +676,7 @@ def show_automatic_recognition(tracker):
             st.success("✅ Logged")
         else:
             st.warning("⚠️ Skipped")
-    )
-
-    st.subheader("📝 Automatic Detection Log")
-    for log_entry in reversed(st.session_state.auto_detection_logs[-max_logs:]):
-        cols = st.columns([2, 2, 2, 2])
-        cols[0].write(f"**{log_entry['name']}**")
-        cols[1].write(f"Confidence: {log_entry['confidence']:.1f}%")
-        cols[2].write(f"Action: {log_entry['action']}")
-        cols[3].write(f"Time: {log_entry['timestamp']}")
-        if log_entry["logged"]:
-            st.success("✅ Logged")
-        else:
-            st.warning("⚠️ Skipped")
+    
 
 
 
