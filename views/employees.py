@@ -150,7 +150,7 @@ def show_employee_management(tracker):
         zip_file = st.file_uploader("Upload ZIP file", type=['zip'])
         
         if zip_file and st.button("Process ZIP file"):
-            st.write("hello")
+           
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Extract ZIP
                 with zipfile.ZipFile(zip_file) as zf:
@@ -159,13 +159,14 @@ def show_employee_management(tracker):
                 # Process folders
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                st.write("hello2")
+              
                 
                 folders = [d for d in os.listdir(temp_dir) 
                           if os.path.isdir(os.path.join(temp_dir, d))]
-                
+                st.write(folders)
                 for i, folder_name in enumerate(folders):
                     status_text.text(f"Processing {folder_name}...")
+                    st.write(folder_name)
                     
                     source_folder = os.path.join(temp_dir, folder_name)
                     dest_folder = os.path.join(tracker.employees_folder, folder_name)
