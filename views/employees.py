@@ -179,7 +179,7 @@ def show_employee_management(tracker):
                
                     for i, folder_name in enumerate(inner_folders):
                         status_text.text(f"Processing {folder_name}...")
-                        st.write(folder_name)
+                    
                         
                         source_folder = os.path.join(inner_path, folder_name)
                         dest_folder = os.path.join(tracker.employees_folder, folder_name)
@@ -200,7 +200,7 @@ def show_employee_management(tracker):
                                         tracker.known_embeddings.append(embedding)
                                         tracker.known_names.append(folder_name)
                         
-                        progress_bar.progress((i + 1) / len(folders))
+                        progress_bar.progress((i + 1) / len(inner_folders))
                     
                     tracker.save_embeddings()
                     st.success(f"Processed {len(folders)} employees from ZIP file!")
