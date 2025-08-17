@@ -2,7 +2,8 @@ import streamlit as st
 from tracker import get_tracker
 from views import dashboard, employees, recognition, reports, settings
 
-st.set_page_config(page_title="Employee Attendance System", layout="wide")
+st.set_page_config(page_title="Employee Attendance System", layout="wide", initial_sidebar_state="expanded")
+
 
 def main():
     st.title("Employee Attendance Tracking System")
