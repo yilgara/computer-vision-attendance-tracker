@@ -521,555 +521,6 @@ def show_live_recognition(tracker):
 
 
 
-def show_automatic_recognition_simple(tracker):
-    """Simple automatic recognition using native Streamlit camera input"""
-    st.subheader("🔄 Simple Automatic Recognition Mode")
-    st.info("This mode uses Streamlit's native camera for reliable automatic detection.")
-    
-    # Initialize session state
-    if 'auto_mode_active' not in st.session_state:
-        st.session_state.auto_mode_active = False
-    if 'auto_detection_logs' not in st.session_state:
-        st.session_state.auto_detection_logs = []
-    if 'last_capture_time' not in st.session_state:
-        st.session_state.last_capture_time = 0
-    if 'capture_counter' not in st.session_state:
-        st.session_state.capture_counter = 0
-    if 'debug_captures' not in st.session_state:
-        st.session_state.debug_captures = []
-    
-    # IMMEDIATE DEBUG INFO AT THE TOP - ALWAYS VISIBLE
-    st.write("🔍 **IMMEDIATE DEBUG STATUS** (Top of page)")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Auto Active", "✅" if st.session_state.auto_mode_active else "❌")
-    with col2:
-        st.metric("Captures", st.session_state.capture_counter)
-    with col3:
-        st.metric("Logs", len(st.session_state.auto_detection_logs))
-    with col4:
-        st.metric("Time", datetime.datetime.now().strftime("%H:%M:%S"))
-    
-    # Settings
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        auto_confidence_threshold = st.slider(
-            "Auto-log Confidence Threshold:",
-            min_value=0.5,
-            max_value=1.0,
-            value=max(0.8, tracker.similarity_threshold),
-            step=0.05
-        )
-    
-    with col2:
-        detection_interval = st.number_input(
-            "Detection Interval (seconds):",
-            min_value=2,
-            max_value=30,
-            value=5,
-            help="How often to auto-refresh and capture"
-        )
-    
-    with col3:
-        max_auto_logs = st.number_input(
-            "Max Auto Logs:",
-            min_value=5,
-            max_value=50,
-            value=20
-        )
-    
-    # Debug options
-    st.subheader("🐛 Debug Options")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        debug_mode = st.checkbox("Show Debug Info", value=True)
-        show_captures = st.checkbox("Show Recent Captures", value=True)
-    
-    with col2:
-        max_debug_captures = st.number_input("Max Debug Captures:", min_value=1, max_value=5, value=3)
-    
-    # Control buttons
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("▶️ Start Auto Detection", type="primary"):
-            st.session_state.auto_mode_active = True
-            st.session_state.capture_counter = 0
-            st.session_state.debug_captures = []
-            st.success("✅ Auto detection started!")
-            time.sleep(1)  # Brief pause before first capture
-            st.rerun()
-    
-    with col2:
-        if st.button("⏸️ Stop Auto Detection", type="secondary"):
-            st.session_state.auto_mode_active = False
-            st.info("⏸️ Auto detection stopped")
-            st.rerun()
-    
-    with col3:
-        if st.button("🗑️ Clear All Data"):
-            st.session_state.auto_detection_logs = []
-            st.session_state.debug_captures = []
-            st.session_state.capture_counter = 0
-            st.rerun()
-    
-    # Main auto detection logic
-    if st.session_state.auto_mode_active:
-        # SHOW DEBUG BEFORE RUNNING AUTO DETECTION
-        if debug_mode:
-            st.write("🐛 **DEBUG: About to run auto detection**")
-            st.write(f"- Mode active: {st.session_state.auto_mode_active}")
-            st.write(f"- Current counter: {st.session_state.capture_counter}")
-            st.write(f"- Time: {datetime.datetime.now().strftime('%H:%M:%S')}")
-        
-        run_automatic_detection(
-            tracker, 
-            auto_confidence_threshold, 
-            detection_interval,
-            debug_mode, 
-            show_captures, 
-            max_debug_captures, 
-            max_auto_logs
-        )
-    else:
-        st.info("👆 Click 'Start Auto Detection' to begin monitoring")
-        
-        # SHOW DEBUG INFO WHEN NOT RUNNING - ALWAYS VISIBLE
-        if debug_mode:
-            st.write("🐛 **DEBUG: Auto detection not running**")
-            show_comprehensive_debug_status()
-        
-        if show_captures:
-            show_recent_captures(max_debug_captures)
-        
-        show_detection_results(max_auto_logs)
-
-
-def run_automatic_detection(tracker, confidence_threshold, detection_interval, 
-                          debug_mode, show_captures, max_debug_captures, max_auto_logs):
-    """Run the automatic detection loop"""
-    
-    # SHOW DEBUG AT THE VERY START OF AUTO DETECTION
-    if debug_mode:
-        st.write("🐛 **DEBUG: Inside run_automatic_detection function**")
-        st.write(f"- Confidence threshold: {confidence_threshold}")
-        st.write(f"- Detection interval: {detection_interval}s")
-        st.write(f"- Current capture counter: {st.session_state.capture_counter}")
-    
-    st.success("🟢 **Auto Detection Active**")
-    
-    if debug_mode:
-        st.write(f"🔍 **Status**: Capture #{st.session_state.capture_counter + 1} starting...")
-        st.write(f"🔍 **Settings**: Confidence {confidence_threshold:.2f}, Interval {detection_interval}s")
-    
-    # Create unique key for camera input to force refresh
-    camera_key = f"auto_camera_{st.session_state.capture_counter}_{int(time.time())}"
-    
-    if debug_mode:
-        st.write(f"🔍 **Camera Key**: {camera_key}")
-    
-    # Native Streamlit camera input - this is guaranteed to work!
-    st.write("📷 **Live Camera Feed**")
-    picture = st.camera_input(
-        "Auto-capturing for face detection...", 
-        key=camera_key,
-        help=f"Capture #{st.session_state.capture_counter + 1} - Auto-refreshing every {detection_interval}s"
-    )
-    
-    if debug_mode:
-        st.write(f"🔍 **Camera Input Result**: {'Image received' if picture is not None else 'No image yet'}")
-    
-    # Show the captured image immediately
-    if picture is not None:
-        st.session_state.capture_counter += 1
-        current_time = datetime.datetime.now().strftime("%H:%M:%S")
-        
-        if debug_mode:
-            st.write(f"🔍 **SUCCESS**: Captured image #{st.session_state.capture_counter} at {current_time}")
-        
-        # Display the captured image prominently
-        st.write("📸 **Current Capture**")
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.image(
-                picture, 
-                caption=f"Capture #{st.session_state.capture_counter} at {current_time}",
-                width=400
-            )
-        
-        with col2:
-            st.write(f"**Capture #:** {st.session_state.capture_counter}")
-            st.write(f"**Time:** {current_time}")
-            st.write(f"**Next capture in:** {detection_interval}s")
-            
-            if debug_mode:
-                st.success("✅ Image captured successfully!")
-        
-        # Process the image
-        if debug_mode:
-            st.write("🔍 **Starting image processing...**")
-        
-        success = process_camera_capture(
-            tracker, 
-            picture, 
-            confidence_threshold, 
-            debug_mode, 
-            show_captures, 
-            max_debug_captures, 
-            max_auto_logs
-        )
-        
-        if debug_mode:
-            st.write(f"🔍 **Processing result**: {'Success' if success else 'Failed'}")
-    
-    else:
-        if debug_mode:
-            st.write("⏳ **Waiting for camera capture...**")
-        
-        # Show placeholder when no image
-        st.info("📷 Waiting for camera to capture image...")
-    
-    # SHOW DEBUG INFO BEFORE COUNTDOWN TO ENSURE IT'S VISIBLE
-    if debug_mode:
-        st.write("🔍 **About to start countdown...**")
-        show_debug_status()
-    
-    # Show countdown and auto-refresh
-    if st.session_state.auto_mode_active:
-        show_countdown_and_refresh(detection_interval, debug_mode)
-
-
-def process_camera_capture(tracker, picture, confidence_threshold, debug_mode, 
-                         show_captures, max_debug_captures, max_auto_logs):
-    """Process the captured image from camera input"""
-    
-    try:
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        
-        if debug_mode:
-            st.write(f"🔍 **Step 1**: Converting image at {timestamp}")
-        
-        # Convert to OpenCV format (same as manual mode)
-        image = Image.open(picture)
-        image_array = np.array(image)
-        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
-        
-        if debug_mode:
-            st.write(f"🔍 **Step 2**: Image shape: {image_array.shape}")
-        
-        # Store for debugging if requested
-        if show_captures:
-            rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
-            st.session_state.debug_captures.append({
-                'image': rgb_image,
-                'timestamp': timestamp,
-                'capture_number': st.session_state.capture_counter,
-                'shape': image_array.shape
-            })
-            # Keep only recent captures
-            if len(st.session_state.debug_captures) > max_debug_captures:
-                st.session_state.debug_captures = st.session_state.debug_captures[-max_debug_captures:]
-        
-        # Process with DeepFace (identical to manual mode)
-        temp_path = f"temp_auto_{time.time()}_{st.session_state.capture_counter}.jpg"
-        cv2.imwrite(temp_path, image_array)
-        
-        try:
-            if debug_mode:
-                st.write(f"🔍 **Step 3**: Running DeepFace detection...")
-            
-            faces = DeepFace.extract_faces(
-                img_path=temp_path,
-                detector_backend=tracker.detection_backend,
-                enforce_detection=False
-            )
-            
-            faces_count = len(faces) if faces else 0
-            
-            if debug_mode:
-                st.write(f"🔍 **Step 4**: Found {faces_count} face(s)")
-            
-            if faces:
-                detection_results = []
-                
-                for i, face in enumerate(faces):
-                    if debug_mode:
-                        st.write(f"🔍 **Step 5.{i+1}**: Processing face {i+1}")
-                    
-                    # Extract face array
-                    if isinstance(face, dict):
-                        face_array = (face['face'] * 255).astype(np.uint8)
-                    else:
-                        face_array = (face * 255).astype(np.uint8)
-                    
-                    # Get embedding
-                    embedding = tracker.extract_face_embedding(face_array)
-                    
-                    if embedding is not None:
-                        # Recognize face
-                        name, confidence = tracker.recognize_face_from_embedding(embedding)
-                        
-                        if debug_mode:
-                            st.write(f"🔍 **Step 6.{i+1}**: {name} - {confidence:.1f}%")
-                        
-                        detection_results.append({
-                            'name': name,
-                            'confidence': confidence,
-                            'face_image': face_array
-                        })
-                        
-                        # Auto-log if confidence is high enough
-                        if name != "Unknown" and confidence > (confidence_threshold * 100):
-                            action = tracker.determine_action(name)
-                            
-                            # Try to log attendance
-                            logged = tracker.log_attendance(name, action, confidence)
-                            
-                            # Add to detection log
-                            log_entry = {
-                                'name': name,
-                                'confidence': confidence,
-                                'action': action,
-                                'logged': logged,
-                                'timestamp': timestamp,
-                                'capture_number': st.session_state.capture_counter,
-                                'face_image': face_array
-                            }
-                            
-                            st.session_state.auto_detection_logs.append(log_entry)
-                            if len(st.session_state.auto_detection_logs) > max_auto_logs * 2:
-                                st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-max_auto_logs:]
-                            
-                            # Show immediate feedback
-                            if logged:
-                                st.success(f"✅ **Auto-logged**: {name} - {action} ({confidence:.1f}%)")
-                                st.toast(f"✅ {name} - {action}", icon="✅")
-                            else:
-                                st.warning(f"⚠️ **Detected but not logged**: {name} (recent entry)")
-                                st.toast(f"⚠️ {name} detected", icon="⚠️")
-                            
-                            if debug_mode:
-                                st.write(f"🔍 **Step 7.{i+1}**: Logged {action} - Success: {logged}")
-                        else:
-                            if debug_mode:
-                                reason = "Unknown person" if name == "Unknown" else f"Low confidence ({confidence:.1f}%)"
-                                st.write(f"🔍 **Step 6.{i+1}**: Not logging - {reason}")
-                    else:
-                        if debug_mode:
-                            st.error(f"🔍 **ERROR**: Could not extract embedding for face {i+1}")
-                
-                if debug_mode and detection_results:
-                    st.write(f"🔍 **Summary**: Processed {len(detection_results)} faces successfully")
-                    
-            else:
-                if debug_mode:
-                    st.write("🔍 **Step 4**: No faces detected")
-        
-        finally:
-            # Clean up temp file
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-        
-        return True
-        
-    except Exception as e:
-        st.error(f"❌ **Processing Error**: {str(e)}")
-        if debug_mode:
-            st.write(f"🔍 **ERROR Details**: {e}")
-        return False
-
-
-def show_countdown_and_refresh(detection_interval, debug_mode):
-    """Show countdown and handle auto-refresh with visual countdown"""
-    
-    # Visual countdown display
-    countdown_placeholder = st.empty()
-    progress_placeholder = st.empty()
-    
-    # Show current capture gallery while counting down
-    if st.session_state.debug_captures:
-        st.write("📸 **Recent Captures Gallery**")
-        show_capture_gallery()
-    
-    with countdown_placeholder.container():
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.write(f"⏱️ **Next capture in {detection_interval} seconds...**")
-        with col2:
-            if st.button("🔄 Capture Now", key="manual_trigger"):
-                st.rerun()
-        with col3:
-            if st.button("⏸️ Stop Auto", key="stop_auto", type="secondary"):
-                st.session_state.auto_mode_active = False
-                st.rerun()
-    
-    # Visual progress bar countdown
-    progress_bar = progress_placeholder.progress(0)
-    status_text = st.empty()
-    
-    # Countdown with progress bar
-    for i in range(detection_interval):
-        remaining = detection_interval - i
-        progress = (i + 1) / detection_interval
-        
-        progress_bar.progress(progress)
-        status_text.write(f"⏰ Next capture in **{remaining}** seconds...")
-        
-        time.sleep(1)
-        
-        # Check if user stopped detection during countdown
-        if not st.session_state.auto_mode_active:
-            status_text.write("⏸️ Auto detection stopped by user")
-            return
-    
-    # Final update
-    progress_bar.progress(1.0)
-    status_text.write("🔄 **Capturing now...**")
-    
-    if st.session_state.auto_mode_active:  # Check if still active
-        if debug_mode:
-            st.write(f"🔄 **Auto-refreshing** after {detection_interval}s interval...")
-        time.sleep(0.5)  # Brief pause before refresh
-        st.rerun()
-
-
-def show_capture_gallery():
-    """Show a gallery of recent captures in a compact format"""
-    if not st.session_state.debug_captures:
-        return
-        
-    # Show last 3 captures in a row
-    recent_captures = st.session_state.debug_captures[-3:]
-    
-    if len(recent_captures) >= 1:
-        cols = st.columns(len(recent_captures))
-        
-        for i, capture in enumerate(recent_captures):
-            with cols[i]:
-                st.image(
-                    capture['image'],
-                    caption=f"#{capture['capture_number']} - {capture['timestamp']}",
-                    width=150
-                )
-
-
-def show_debug_status():
-    """Show debug status information"""
-    st.subheader("🐛 Debug Status")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Total Captures", st.session_state.capture_counter)
-    
-    with col2:
-        st.metric("Detection Logs", len(st.session_state.auto_detection_logs))
-    
-    with col3:
-        st.metric("Debug Captures Stored", len(st.session_state.debug_captures))
-    
-    # Show recent activity
-    if st.session_state.auto_detection_logs:
-        latest_log = st.session_state.auto_detection_logs[-1]
-        st.info(f"🕐 **Latest Detection**: {latest_log['name']} at {latest_log['timestamp']}")
-
-
-def show_recent_captures(max_debug_captures):
-    """Show recent captured images with enhanced display"""
-    st.subheader("📸 Recent Captures Timeline")
-    
-    if st.session_state.debug_captures:
-        # Show capture statistics
-        total_captures = len(st.session_state.debug_captures)
-        latest_capture = st.session_state.debug_captures[-1]
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Captures", total_captures)
-        with col2:
-            st.metric("Latest Capture", f"#{latest_capture['capture_number']}")
-        with col3:
-            st.metric("Latest Time", latest_capture['timestamp'])
-        
-        # Display captures in a grid
-        st.write("**Capture Gallery:**")
-        
-        # Create columns for grid display
-        num_cols = min(3, len(st.session_state.debug_captures))
-        cols = st.columns(num_cols)
-        
-        for i, capture in enumerate(reversed(st.session_state.debug_captures)):
-            col_idx = i % num_cols
-            with cols[col_idx]:
-                # Enhanced image display with border
-                st.image(
-                    capture['image'],
-                    caption=f"📷 Capture #{capture['capture_number']}\n🕐 {capture['timestamp']}\n📐 {capture['shape'][1]}x{capture['shape'][0]}",
-                    width=200,
-                    use_column_width=False
-                )
-                
-                # Add capture details
-                with st.expander(f"Details #{capture['capture_number']}", expanded=False):
-                    st.write(f"**Timestamp:** {capture['timestamp']}")
-                    st.write(f"**Dimensions:** {capture['shape']}")
-                    st.write(f"**Capture Number:** {capture['capture_number']}")
-        
-        # Add real-time update indicator
-        st.write("🔄 *Gallery updates automatically with each new capture*")
-        
-    else:
-        st.info("📷 No captures yet - images will appear here as they are captured")
-        st.write("**What you'll see here:**")
-        st.write("- Each captured image with timestamp")
-        st.write("- Image dimensions and quality info") 
-        st.write("- Automatic updates every N seconds")
-        st.write("- Last 3 captures displayed in real-time")
-
-
-def show_detection_results(max_auto_logs):
-    """Show detection results log"""
-    st.subheader("📝 Auto Detection Log")
-    
-    if st.session_state.auto_detection_logs:
-        # Show summary
-        total_detections = len(st.session_state.auto_detection_logs)
-        successful_logs = len([log for log in st.session_state.auto_detection_logs if log['logged']])
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total Detections", total_detections)
-        with col2:
-            st.metric("Successfully Logged", successful_logs)
-        
-        # Show recent detections
-        recent_logs = st.session_state.auto_detection_logs[-max_auto_logs:]
-        
-        for log_entry in reversed(recent_logs):
-            status_icon = "✅" if log_entry['logged'] else "⚠️"
-            
-            with st.expander(f"{status_icon} Capture #{log_entry['capture_number']} - {log_entry['name']} ({log_entry['timestamp']})", expanded=False):
-                col1, col2 = st.columns([1, 2])
-                
-                with col1:
-                    st.image(log_entry['face_image'], caption="Detected Face", width=150)
-                
-                with col2:
-                    st.write(f"**Name:** {log_entry['name']}")
-                    st.write(f"**Confidence:** {log_entry['confidence']:.1f}%")
-                    st.write(f"**Action:** {log_entry['action']}")
-                    st.write(f"**Time:** {log_entry['timestamp']}")
-                    st.write(f"**Capture:** #{log_entry['capture_number']}")
-                    
-                    if log_entry['logged']:
-                        st.success("✅ Successfully logged to attendance")
-                    else:
-                        st.warning("⚠️ Not logged (recent entry)")
-    else:
-        st.info("No detections yet. Start auto detection to begin monitoring.")
 
 
    
@@ -1153,735 +604,561 @@ def show_manual_recognition(tracker):
 
 
 
+import streamlit as st
+import cv2
+import numpy as np
+import time
+import datetime
+import os
+from PIL import Image
+from deepface import DeepFace
+import threading
+import queue
 
-def get_camera_html(detection_interval):
-    """Generate HTML/JS for automatic camera capture"""
-    return f"""
-    <div id="camera-container">
-        <video id="camera-feed" autoplay playsinline style="width: 100%; max-width: 640px; height: auto; border-radius: 10px;"></video>
-        <canvas id="capture-canvas" style="display: none;"></canvas>
-        <div id="camera-status" style="margin-top: 10px; padding: 10px; background: #f0f2f6; border-radius: 5px;">
-            <p id="status-text">Initializing camera...</p>
-        </div>
-    </div>
-
-    <script>
-    let video = document.getElementById('camera-feed');
-    let canvas = document.getElementById('capture-canvas');
-    let context = canvas.getContext('2d');
-    let statusText = document.getElementById('status-text');
-    let isCapturing = false;
-
-    // Initialize camera
-    async function initCamera() {{
-        try {{
-            const constraints = {{
-                video: {{
-                    width: {{ ideal: 640 }},
-                    height: {{ ideal: 480 }},
-                    facingMode: 'user'
-                }}
-            }};
-            
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = stream;
-            statusText.textContent = '🟢 Camera active - Automatic detection enabled';
-            statusText.style.color = 'green';
-            
-            // Start automatic capture
-            startAutoCapture();
-            
-        }} catch (err) {{
-            console.error('Camera access error:', err);
-            statusText.textContent = '🔴 Camera access denied or not available';
-            statusText.style.color = 'red';
-        }}
-    }}
-
-    function startAutoCapture() {{
-        if (isCapturing) return;
-        isCapturing = true;
-        
-        setInterval(() => {{
-            if (video.videoWidth > 0 && video.videoHeight > 0) {{
-                captureFrame();
-            }}
-        }}, {detection_interval * 1000});
-    }}
-
-    function captureFrame() {{
-        // Set canvas dimensions to match video
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        
-        // Draw current frame
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // Convert to base64
-        const imageData = canvas.toDataURL('image/jpeg', 0.8);
-        
-        // Send to Streamlit
-        window.parent.postMessage({{
-            type: 'camera-capture',
-            image: imageData,
-            timestamp: Date.now()
-        }}, '*');
-    }}
-
-    // Initialize on load
-    initCamera();
-    </script>
-    """
-
-def show_automatic_recognition(tracker):
-    """Automatic recognition mode with continuous detection and debugging"""
-    st.subheader("🔄 Automatic Recognition Mode")
-    st.info("Camera will continuously monitor for faces and automatically log attendance.")
+def show_automatic_recognition_simple(tracker):
+    """Runtime automatic recognition with multiple approaches"""
+    st.subheader("🔄 Runtime Auto Recognition Mode")
+    st.info("🤖 This mode attempts true automation without user interaction")
     
-    # Initialize session state for automatic mode
-    if 'auto_mode_active' not in st.session_state:
-        st.session_state.auto_mode_active = False
+    # Initialize session state
     if 'auto_detection_logs' not in st.session_state:
         st.session_state.auto_detection_logs = []
-    if 'last_processed_timestamp' not in st.session_state:
-        st.session_state.last_processed_timestamp = 0
-    if 'debug_images' not in st.session_state:
-        st.session_state.debug_images = []
-    if 'debug_info' not in st.session_state:
-        st.session_state.debug_info = []
+    if 'capture_counter' not in st.session_state:
+        st.session_state.capture_counter = 0
+    if 'debug_captures' not in st.session_state:
+        st.session_state.debug_captures = []
+    if 'runtime_active' not in st.session_state:
+        st.session_state.runtime_active = False
+    if 'auto_capture_queue' not in st.session_state:
+        st.session_state.auto_capture_queue = queue.Queue()
+    if 'last_refresh_time' not in st.session_state:
+        st.session_state.last_refresh_time = time.time()
     
-    # Auto mode settings
+    # Status Dashboard
+    show_runtime_status_dashboard()
+    
+    # Settings
     col1, col2, col3 = st.columns(3)
     
     with col1:
         auto_confidence_threshold = st.slider(
-            "Auto-log Confidence Threshold:",
-            min_value=0.5,
-            max_value=1.0,
-            value=max(0.8, tracker.similarity_threshold),
-            step=0.05,
-            help="Higher threshold for automatic logging (more strict)"
+            "Auto-log Confidence:",
+            min_value=0.5, max_value=1.0, value=0.8, step=0.05
         )
     
     with col2:
-        detection_interval = st.number_input(
-            "Detection Interval (seconds):",
-            min_value=1,
-            max_value=30,
-            value=3,
-            help="How often to process frames for detection"
+        capture_interval = st.number_input(
+            "Capture Interval (seconds):",
+            min_value=3, max_value=60, value=10,
+            help="How often to attempt automatic capture"
         )
     
     with col3:
-        max_auto_logs = st.number_input(
-            "Max Auto Logs:",
-            min_value=5,
-            max_value=100,
-            value=20,
-            help="Maximum automatic detections to show"
+        max_runtime_logs = st.number_input(
+            "Max Runtime Logs:", min_value=10, max_value=100, value=50
         )
     
-    # DEBUG CONTROLS
-    st.subheader("🐛 Debug Controls")
+    # Runtime approach selection
+    st.subheader("🎛️ Runtime Approach")
+    approach = st.radio(
+        "Choose automation approach:",
+        [
+            "🔄 Auto-Refresh Method",
+            "📹 Continuous Camera Stream", 
+            "⏰ Timer-Based Capture",
+            "🔗 JavaScript Integration"
+        ],
+        help="Different methods for runtime automation - try each if others don't work"
+    )
+    
+    debug_mode = st.checkbox("Show Debug Info", value=True)
+    
+    # Control buttons
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        debug_mode = st.checkbox("Enable Debug Mode", value=True)
+        if st.button("🚀 Start Runtime Mode", type="primary"):
+            st.session_state.runtime_active = True
+            st.session_state.capture_counter = 0
+            st.session_state.last_refresh_time = time.time()
+            st.success("✅ Runtime mode started!")
+            st.rerun()
     
     with col2:
-        show_raw_images = st.checkbox("Show Raw Captured Images", value=True)
+        if st.button("⏹️ Stop Runtime Mode", type="secondary"):
+            st.session_state.runtime_active = False
+            st.info("⏸️ Runtime mode stopped")
+            st.rerun()
     
     with col3:
-        max_debug_images = st.number_input("Max Debug Images:", min_value=1, max_value=10, value=3)
+        if st.button("🗑️ Clear All Data"):
+            clear_runtime_data()
+            st.rerun()
     
-    # Control buttons
-    col1, col2, col3, col4 = st.columns(4)
+    # Execute the selected approach
+    if st.session_state.runtime_active:
+        if approach == "🔄 Auto-Refresh Method":
+            run_auto_refresh_approach(tracker, auto_confidence_threshold, capture_interval, debug_mode, max_runtime_logs)
+        elif approach == "📹 Continuous Camera Stream":
+            run_continuous_stream_approach(tracker, auto_confidence_threshold, debug_mode, max_runtime_logs)
+        elif approach == "⏰ Timer-Based Capture":
+            run_timer_based_approach(tracker, auto_confidence_threshold, capture_interval, debug_mode, max_runtime_logs)
+        elif approach == "🔗 JavaScript Integration":
+            run_javascript_integration_approach(tracker, auto_confidence_threshold, capture_interval, debug_mode, max_runtime_logs)
+    else:
+        st.info("👆 Select an approach and click 'Start Runtime Mode' to begin automation")
+        show_runtime_results(max_runtime_logs)
+
+
+def show_runtime_status_dashboard():
+    """Runtime status dashboard with real-time updates"""
+    st.subheader("📊 Runtime Status Dashboard")
+    
+    current_time = datetime.datetime.now()
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        if st.button("▶️ Start Auto Detection", type="primary"):
-            st.session_state.auto_mode_active = True
-            st.session_state.debug_images = []  # Clear debug images
-            st.session_state.debug_info = []    # Clear debug info
-            st.rerun()
+        status = "🟢 ACTIVE" if st.session_state.runtime_active else "🔴 STOPPED"
+        st.metric("Runtime Status", status)
     
     with col2:
-        if st.button("⏸️ Stop Auto Detection", type="secondary"):
-            st.session_state.auto_mode_active = False
-            st.rerun()
+        st.metric("Auto Captures", st.session_state.capture_counter)
     
     with col3:
-        if st.button("🗑️ Clear Logs"):
-            st.session_state.auto_detection_logs = []
-            st.rerun()
+        st.metric("Detections", len(st.session_state.auto_detection_logs))
     
     with col4:
-        if st.button("🧹 Clear Debug Data"):
-            st.session_state.debug_images = []
-            st.session_state.debug_info = []
-            st.rerun()
+        successful = len([log for log in st.session_state.auto_detection_logs if log.get('logged', False)])
+        st.metric("Auto Logged", successful)
     
-    # Show camera interface
-    if st.session_state.auto_mode_active:
-        st.success("🟢 Auto Detection Active")
+    with col5:
+        st.metric("Current Time", current_time.strftime("%H:%M:%S"))
+    
+    # Runtime metrics
+    if st.session_state.runtime_active:
+        elapsed_time = time.time() - st.session_state.last_refresh_time
+        st.progress(min(elapsed_time / 10, 1.0))  # Progress bar for next action
+        st.write(f"⏱️ **Runtime active for**: {elapsed_time:.1f} seconds")
+
+
+def run_auto_refresh_approach(tracker, confidence_threshold, interval, debug_mode, max_logs):
+    """Approach 1: Auto-refresh with camera widget"""
+    st.success("🔄 **Auto-Refresh Method Active**")
+    st.info("This method refreshes the page automatically to trigger new camera widgets")
+    
+    if debug_mode:
+        st.write(f"🔍 **Debug**: Refresh interval = {interval}s")
+        st.write(f"🔍 **Debug**: Current capture count = {st.session_state.capture_counter}")
+    
+    # Create timestamped camera widget
+    current_timestamp = int(time.time())
+    camera_key = f"runtime_camera_{current_timestamp}_{st.session_state.capture_counter}"
+    
+    st.write(f"📷 **Auto Camera #{st.session_state.capture_counter + 1}**")
+    
+    # Camera widget with auto-generated key
+    picture = st.camera_input(
+        f"Runtime Capture #{st.session_state.capture_counter + 1} - Auto-refreshing every {interval}s",
+        key=camera_key,
+        help="This camera widget will refresh automatically"
+    )
+    
+    if picture is not None:
+        st.session_state.capture_counter += 1
+        current_time = datetime.datetime.now().strftime("%H:%M:%S")
         
-        # Display automatic camera capture
-        camera_html = get_camera_html_with_debug(detection_interval, debug_mode)
-        components.html(camera_html, height=600)
+        st.success(f"📸 **Auto-captured image #{st.session_state.capture_counter}** at {current_time}")
         
-        # Handle captured images via JavaScript message
-        captured_image = st.session_state.get('captured_image_data', None)
-        
-        if captured_image:
-            current_timestamp = st.session_state.get('capture_timestamp', 0)
+        # Process immediately
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.image(picture, caption=f"Auto-capture #{st.session_state.capture_counter}", width=300)
+        with col2:
+            st.info("🔄 Processing...")
             
-            # Only process if it's a new capture
-            if current_timestamp > st.session_state.last_processed_timestamp:
-                st.session_state.last_processed_timestamp = current_timestamp
-                
-                if debug_mode:
-                    st.write(f"🔍 **DEBUG**: Processing new frame at timestamp: {current_timestamp}")
-                
-                process_captured_frame_with_debug(
-                    tracker, captured_image, auto_confidence_threshold, 
-                    max_auto_logs, debug_mode, show_raw_images, max_debug_images
-                )
+        success = process_runtime_image(tracker, picture, confidence_threshold, current_time, debug_mode, max_logs)
         
-        # Auto-refresh to handle new captures
+        if success:
+            st.balloons()
+    
+    # Auto-refresh mechanism
+    time.sleep(1)  # Brief pause
+    
+    # Show countdown
+    placeholder = st.empty()
+    for i in range(interval):
+        if not st.session_state.runtime_active:
+            break
+            
+        remaining = interval - i
+        placeholder.write(f"⏰ **Auto-refreshing in {remaining} seconds...** (Capture #{st.session_state.capture_counter + 1})")
+        time.sleep(1)
+    
+    if st.session_state.runtime_active:
+        placeholder.write("🔄 **Refreshing now...**")
         time.sleep(0.5)
         st.rerun()
-        
-    else:
-        st.info("🔴 Auto Detection Stopped")
-        st.write("Click 'Start Auto Detection' to begin continuous monitoring.")
-    
-    # Show debug information
-    if debug_mode:
-        show_debug_information()
-    
-    # Show raw captured images if enabled
-    if show_raw_images and st.session_state.debug_images:
-        show_debug_images(max_debug_images)
-    
-    # Display automatic detection logs
-    display_detection_logs(max_auto_logs)
 
 
-def get_camera_html_with_debug(detection_interval, debug_mode):
-    """Generate HTML/JS for automatic camera capture with debug features"""
-    debug_console = "true" if debug_mode else "false"
-    
-    return f"""
-    <div id="camera-container">
-        <video id="camera-feed" autoplay playsinline style="width: 100%; max-width: 640px; height: auto; border-radius: 10px;"></video>
-        <canvas id="capture-canvas" style="display: none;"></canvas>
-        <div id="camera-status" style="margin-top: 10px; padding: 10px; background: #f0f2f6; border-radius: 5px;">
-            <p id="status-text">Initializing camera...</p>
-            <p id="debug-text" style="font-size: 12px; color: #666;"></p>
-        </div>
-    </div>
-
-    <script>
-    let video = document.getElementById('camera-feed');
-    let canvas = document.getElementById('capture-canvas');
-    let context = canvas.getContext('2d');
-    let statusText = document.getElementById('status-text');
-    let debugText = document.getElementById('debug-text');
-    let isCapturing = false;
-    let captureCount = 0;
-    const debugMode = {debug_console};
-
-    function debugLog(message) {{
-        if (debugMode) {{
-            console.log('[DEBUG]', message);
-            debugText.textContent = `Debug: ${{message}} (Captures: ${{captureCount}})`;
-        }}
-    }}
-
-    // Initialize camera
-    async function initCamera() {{
-        try {{
-            debugLog('Requesting camera access...');
-            
-            const constraints = {{
-                video: {{
-                    width: {{ ideal: 640 }},
-                    height: {{ ideal: 480 }},
-                    facingMode: 'user'
-                }}
-            }};
-            
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = stream;
-            statusText.textContent = '🟢 Camera active - Automatic detection enabled';
-            statusText.style.color = 'green';
-            
-            debugLog('Camera initialized successfully');
-            
-            // Wait for video to be ready
-            video.onloadedmetadata = function() {{
-                debugLog(`Video dimensions: ${{video.videoWidth}}x${{video.videoHeight}}`);
-                startAutoCapture();
-            }};
-            
-        }} catch (err) {{
-            console.error('Camera access error:', err);
-            statusText.textContent = '🔴 Camera access denied or not available';
-            statusText.style.color = 'red';
-            debugLog(`Camera error: ${{err.message}}`);
-        }}
-    }}
-
-    function startAutoCapture() {{
-        if (isCapturing) return;
-        isCapturing = true;
-        
-        debugLog(`Starting auto capture with ${{detection_interval}}s interval`);
-        
-        setInterval(() => {{
-            if (video.videoWidth > 0 && video.videoHeight > 0) {{
-                captureFrame();
-            }} else {{
-                debugLog('Video not ready, skipping frame');
-            }}
-        }}, {detection_interval * 1000});
-    }}
-
-    function captureFrame() {{
-        try {{
-            captureCount++;
-            debugLog(`Capturing frame #${{captureCount}}`);
-            
-            // Set canvas dimensions to match video
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            debugLog(`Canvas set to ${{canvas.width}}x${{canvas.height}}`);
-            
-            // Draw current frame
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Convert to base64
-            const imageData = canvas.toDataURL('image/jpeg', 0.8);
-            const imageSizeKB = Math.round(imageData.length / 1024);
-            
-            debugLog(`Image captured: ${{imageSizeKB}}KB`);
-            
-            // Send to Streamlit
-            window.parent.postMessage({{
-                type: 'camera-capture',
-                image: imageData,
-                timestamp: Date.now(),
-                frameNumber: captureCount,
-                dimensions: {{
-                    width: canvas.width,
-                    height: canvas.height
-                }},
-                sizeKB: imageSizeKB
-            }}, '*');
-            
-            debugLog('Frame sent to Streamlit');
-            
-        }} catch (error) {{
-            console.error('Capture error:', error);
-            debugLog(`Capture error: ${{error.message}}`);
-        }}
-    }}
-
-    // Initialize on load
-    initCamera();
-    </script>
-    """
-
-
-def process_captured_frame_with_debug(tracker, image_data, confidence_threshold, max_logs, debug_mode, show_raw_images, max_debug_images):
-    """Process automatically captured frame with comprehensive debugging"""
-    debug_info = {
-        'timestamp': datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3],
-        'step': 'Starting',
-        'error': None,
-        'faces_detected': 0,
-        'recognition_results': []
-    }
+def run_continuous_stream_approach(tracker, confidence_threshold, debug_mode, max_logs):
+    """Approach 2: Continuous camera stream with OpenCV"""
+    st.success("📹 **Continuous Stream Method Active**")
+    st.info("This method attempts to use OpenCV directly for continuous capture")
     
     try:
-        if debug_mode:
-            st.write(f"🔍 **DEBUG Step 1**: Starting frame processing at {debug_info['timestamp']}")
+        # Attempt to access camera directly
+        if 'cv_camera' not in st.session_state:
+            st.session_state.cv_camera = cv2.VideoCapture(0)
         
-        debug_info['step'] = 'Decoding image'
+        camera = st.session_state.cv_camera
         
-        # Decode base64 image
-        if ',' in image_data:
-            image_data = image_data.split(',')[1]
+        if camera.isOpened():
+            st.success("✅ **Camera opened successfully**")
+            
+            # Capture frame
+            ret, frame = camera.read()
+            
+            if ret:
+                st.session_state.capture_counter += 1
+                current_time = datetime.datetime.now().strftime("%H:%M:%S")
+                
+                st.success(f"📹 **Stream capture #{st.session_state.capture_counter}** at {current_time}")
+                
+                # Convert to RGB for display
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.image(frame_rgb, caption=f"Stream capture #{st.session_state.capture_counter}")
+                with col2:
+                    st.info("🔄 Processing stream...")
+                
+                # Process frame directly
+                success = process_opencv_frame(tracker, frame, confidence_threshold, current_time, debug_mode, max_logs)
+                
+                if success:
+                    st.success("✅ Stream processed successfully")
+                
+                # Auto-refresh for continuous stream
+                time.sleep(2)
+                st.rerun()
+            else:
+                st.error("❌ Failed to capture frame from camera")
+        else:
+            st.error("❌ Could not open camera - this method may not work in cloud environments")
+            st.info("💡 Try the 'Auto-Refresh Method' or 'Timer-Based Capture' instead")
+            
+    except Exception as e:
+        st.error(f"❌ **Stream Error**: {str(e)}")
+        st.info("💡 This approach requires local camera access. Try other methods for cloud deployment.")
+
+
+def run_timer_based_approach(tracker, confidence_threshold, interval, debug_mode, max_logs):
+    """Approach 3: Timer-based with smart refresh"""
+    st.success("⏰ **Timer-Based Method Active**")
+    st.info("This method uses smart timing to trigger captures automatically")
+    
+    # Check if it's time for next capture
+    current_time = time.time()
+    elapsed_since_last = current_time - st.session_state.last_refresh_time
+    
+    if debug_mode:
+        st.write(f"🔍 **Debug**: Elapsed time = {elapsed_since_last:.1f}s")
+        st.write(f"🔍 **Debug**: Interval = {interval}s")
+        st.write(f"🔍 **Debug**: Should capture = {elapsed_since_last >= interval}")
+    
+    # Progress indicator
+    progress = min(elapsed_since_last / interval, 1.0)
+    st.progress(progress)
+    
+    if elapsed_since_last >= interval:
+        # Time for new capture
+        st.session_state.last_refresh_time = current_time
+        timestamp_key = int(current_time)
         
-        image_bytes = base64.b64decode(image_data)
-        debug_info['image_size_bytes'] = len(image_bytes)
+        st.success("⏰ **Timer triggered - capturing now!**")
         
-        if debug_mode:
-            st.write(f"🔍 **DEBUG Step 2**: Decoded base64 image, size: {debug_info['image_size_bytes']} bytes")
+        # Create new camera widget
+        camera_key = f"timer_camera_{timestamp_key}_{st.session_state.capture_counter}"
         
-        debug_info['step'] = 'Converting to OpenCV'
+        picture = st.camera_input(
+            f"⏰ Timer Capture #{st.session_state.capture_counter + 1}",
+            key=camera_key,
+            help="Timer-triggered capture - image will be processed automatically"
+        )
         
+        if picture is not None:
+            st.session_state.capture_counter += 1
+            current_timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            
+            st.success(f"⏰ **Timer capture successful** #{st.session_state.capture_counter}")
+            
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.image(picture, caption=f"Timer capture #{st.session_state.capture_counter}")
+            with col2:
+                st.info("⏰ Processing timer capture...")
+            
+            success = process_runtime_image(tracker, picture, confidence_threshold, current_timestamp, debug_mode, max_logs)
+            
+            if success:
+                st.balloons()
+        
+        # Refresh to continue timer
+        time.sleep(1)
+        st.rerun()
+    else:
+        # Show countdown
+        remaining = interval - elapsed_since_last
+        st.info(f"⏰ **Next timer capture in {remaining:.1f} seconds**")
+        
+        # Auto-refresh to update countdown
+        time.sleep(1)
+        st.rerun()
+
+
+def run_javascript_integration_approach(tracker, confidence_threshold, interval, debug_mode, max_logs):
+    """Approach 4: JavaScript integration for advanced automation"""
+    st.success("🔗 **JavaScript Integration Method Active**")
+    st.info("This method uses JavaScript to automate camera interactions")
+    
+    # Embed JavaScript for automation
+    st.markdown(f"""
+    <script>
+    console.log('Streamlit Auto-Capture Script Loaded');
+    
+    function autoCapture() {{
+        console.log('Auto-capture function called');
+        
+        // Find camera button
+        const cameraButtons = document.querySelectorAll('button[kind="primary"]');
+        const cameraButton = Array.from(cameraButtons).find(btn => 
+            btn.textContent.includes('Take photo') || 
+            btn.getAttribute('aria-label') === 'Take photo'
+        );
+        
+        if (cameraButton) {{
+            console.log('Camera button found, clicking...');
+            cameraButton.click();
+        }} else {{
+            console.log('Camera button not found');
+        }}
+    }}
+    
+    // Set up interval for auto-capture
+    setInterval(autoCapture, {interval * 1000});
+    
+    // Initial call
+    setTimeout(autoCapture, 2000);
+    </script>
+    """, unsafe_allow_html=True)
+    
+    # Regular camera widget
+    camera_key = f"js_camera_{int(time.time())}"
+    
+    picture = st.camera_input(
+        "🔗 JavaScript-Automated Camera",
+        key=camera_key,
+        help="JavaScript will attempt to automatically trigger this camera"
+    )
+    
+    if picture is not None:
+        st.session_state.capture_counter += 1
+        current_time = datetime.datetime.now().strftime("%H:%M:%S")
+        
+        st.success(f"🔗 **JS-triggered capture #{st.session_state.capture_counter}** at {current_time}")
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.image(picture, caption=f"JS capture #{st.session_state.capture_counter}")
+        with col2:
+            st.info("🔗 Processing JS capture...")
+        
+        success = process_runtime_image(tracker, picture, confidence_threshold, current_time, debug_mode, max_logs)
+        
+        if success:
+            st.balloons()
+    
+    st.warning("⚠️ **Note**: JavaScript approach may not work in all browsers/environments")
+    st.info("💡 If this doesn't work automatically, try the 'Auto-Refresh Method'")
+
+
+def process_runtime_image(tracker, picture, confidence_threshold, timestamp, debug_mode, max_logs):
+    """Process image captured in runtime mode"""
+    try:
         # Convert to OpenCV format
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        image_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        image = Image.open(picture)
+        image_array = np.array(image)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
         
-        if image_array is None:
-            debug_info['error'] = 'Failed to decode image to OpenCV format'
-            if debug_mode:
-                st.error(f"🔍 **DEBUG ERROR**: {debug_info['error']}")
-            return
+        # Store debug capture
+        rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+        st.session_state.debug_captures.append({
+            'image': rgb_image,
+            'timestamp': timestamp,
+            'capture_number': st.session_state.capture_counter,
+            'method': 'runtime'
+        })
         
-        debug_info['image_shape'] = image_array.shape
+        # Keep recent captures only
+        if len(st.session_state.debug_captures) > 5:
+            st.session_state.debug_captures = st.session_state.debug_captures[-5:]
         
-        if debug_mode:
-            st.write(f"🔍 **DEBUG Step 3**: Converted to OpenCV format, shape: {debug_info['image_shape']}")
-        
-        # Store raw image for debugging
-        if show_raw_images:
-            # Convert BGR to RGB for display
-            rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
-            st.session_state.debug_images.append({
-                'image': rgb_image,
-                'timestamp': debug_info['timestamp'],
-                'shape': debug_info['image_shape']
-            })
-            # Keep only recent debug images
-            if len(st.session_state.debug_images) > max_debug_images:
-                st.session_state.debug_images = st.session_state.debug_images[-max_debug_images:]
-        
-        debug_info['step'] = 'Writing temporary file'
-        
-        # Detect faces
-        temp_path = f"temp_auto_{time.time()}.jpg"
+        # Create temp file for DeepFace
+        temp_path = f"temp_runtime_{int(time.time())}_{st.session_state.capture_counter}.jpg"
         cv2.imwrite(temp_path, image_array)
         
-        if debug_mode:
-            st.write(f"🔍 **DEBUG Step 4**: Wrote temporary file: {temp_path}")
-        
-        debug_info['step'] = 'DeepFace face detection'
-        
         try:
+            # Face detection
             faces = DeepFace.extract_faces(
                 img_path=temp_path,
                 detector_backend=tracker.detection_backend,
                 enforce_detection=False
             )
-            debug_info['faces_detected'] = len(faces) if faces else 0
             
-            if debug_mode:
-                st.write(f"🔍 **DEBUG Step 5**: DeepFace detected {debug_info['faces_detected']} faces")
-        
-        except Exception as deepface_error:
-            debug_info['error'] = f'DeepFace error: {str(deepface_error)}'
-            if debug_mode:
-                st.error(f"🔍 **DEBUG ERROR**: {debug_info['error']}")
-            return
-        
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-                if debug_mode:
-                    st.write(f"🔍 **DEBUG**: Cleaned up temporary file")
-        
-        debug_info['step'] = 'Processing faces'
-        
-        if faces:
-            for i, face in enumerate(faces):
-                face_debug = {'face_index': i}
+            if faces:
+                st.info(f"👤 **Found {len(faces)} face(s)** - processing...")
                 
-                try:
+                for i, face in enumerate(faces):
+                    # Process face
                     if isinstance(face, dict):
                         face_array = (face['face'] * 255).astype(np.uint8)
-                        face_debug['face_type'] = 'dict'
                     else:
                         face_array = (face * 255).astype(np.uint8)
-                        face_debug['face_type'] = 'array'
                     
-                    face_debug['face_shape'] = face_array.shape
-                    
-                    if debug_mode:
-                        st.write(f"🔍 **DEBUG Step 6.{i+1}**: Processing face {i+1}, shape: {face_debug['face_shape']}")
-                    
-                    debug_info['step'] = f'Extracting embedding for face {i+1}'
-                    
-                    # Get embedding
+                    # Get embedding and recognize
                     embedding = tracker.extract_face_embedding(face_array)
-                    
                     if embedding is not None:
-                        face_debug['embedding_shape'] = embedding.shape if hasattr(embedding, 'shape') else 'N/A'
-                        
-                        if debug_mode:
-                            st.write(f"🔍 **DEBUG Step 7.{i+1}**: Extracted embedding, shape: {face_debug['embedding_shape']}")
-                        
-                        debug_info['step'] = f'Recognizing face {i+1}'
-                        
-                        # Recognize face
                         name, confidence = tracker.recognize_face_from_embedding(embedding)
                         
-                        face_debug.update({
-                            'name': name,
-                            'confidence': confidence,
-                            'above_threshold': confidence > (confidence_threshold * 100)
-                        })
+                        # Display result
+                        col1, col2 = st.columns([1, 2])
+                        with col1:
+                            st.image(face_array, width=100)
+                        with col2:
+                            st.write(f"**{name}** ({confidence:.1f}%)")
                         
-                        if debug_mode:
-                            st.write(f"🔍 **DEBUG Step 8.{i+1}**: Recognition result - Name: {name}, Confidence: {confidence:.1f}%")
-                        
-                        if name != "Unknown" and confidence > (confidence_threshold * 100):
+                        # Auto-log if high confidence
+                        if name != "Unknown" and confidence >= (confidence_threshold * 100):
                             action = tracker.determine_action(name)
-                            face_debug['action'] = action
+                            logged = tracker.log_attendance(name, action, confidence)
                             
-                            debug_info['step'] = f'Logging attendance for {name}'
-                            
-                            # Try to log attendance automatically
-                            success = tracker.log_attendance(name, action, confidence)
-                            face_debug['logged'] = success
-                            
-                            if debug_mode:
-                                st.write(f"🔍 **DEBUG Step 9.{i+1}**: Attendance logging - Action: {action}, Success: {success}")
-                            
-                            # Add to detection log
                             log_entry = {
                                 'name': name,
                                 'confidence': confidence,
                                 'action': action,
-                                'logged': success,
-                                'timestamp': datetime.datetime.now().strftime("%H:%M:%S"),
-                                'face_image': face_array
+                                'logged': logged,
+                                'timestamp': timestamp,
+                                'capture_number': st.session_state.capture_counter,
+                                'face_image': face_array,
+                                'method': 'runtime'
                             }
                             
-                            # Add to session state log (keep only recent entries)
                             st.session_state.auto_detection_logs.append(log_entry)
-                            if len(st.session_state.auto_detection_logs) > max_logs * 2:
-                                st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-max_logs:]
                             
-                            # Show immediate notification
-                            if success:
-                                st.toast(f"✅ {name} - {action} logged!", icon="✅")
+                            if logged:
+                                st.success(f"🎉 **Runtime logged**: {name} - {action}")
                             else:
-                                st.toast(f"⚠️ {name} detected but not logged (too recent)", icon="⚠️")
-                        else:
-                            face_debug['reason_not_logged'] = 'Low confidence or unknown person'
-                            if debug_mode:
-                                st.write(f"🔍 **DEBUG Step 8.{i+1}**: Not logging - {face_debug['reason_not_logged']}")
-                    else:
-                        face_debug['embedding_error'] = 'Failed to extract embedding'
-                        if debug_mode:
-                            st.error(f"🔍 **DEBUG ERROR**: Could not extract embedding for face {i+1}")
-                
-                except Exception as face_error:
-                    face_debug['error'] = str(face_error)
-                    if debug_mode:
-                        st.error(f"🔍 **DEBUG ERROR**: Error processing face {i+1}: {face_error}")
-                
-                debug_info['recognition_results'].append(face_debug)
-        
-        else:
-            if debug_mode:
-                st.write("🔍 **DEBUG**: No faces detected in this frame")
-        
-        debug_info['step'] = 'Completed successfully'
-    
-    except Exception as e:
-        debug_info['error'] = str(e)
-        debug_info['step'] = f'Failed at step: {debug_info["step"]}'
-        if debug_mode:
-            st.error(f"🔍 **DEBUG ERROR**: Auto detection error at {debug_info['step']}: {e}")
-    
-    finally:
-        # Store debug info
-        st.session_state.debug_info.append(debug_info)
-        # Keep only recent debug info
-        if len(st.session_state.debug_info) > 20:
-            st.session_state.debug_info = st.session_state.debug_info[-20:]
-
-
-def show_debug_information():
-    """Display debug information"""
-    st.subheader("🐛 Debug Information")
-    
-    if st.session_state.debug_info:
-        # Show latest debug info
-        latest_debug = st.session_state.debug_info[-1]
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Latest Processing Info:**")
-            st.json({
-                'timestamp': latest_debug.get('timestamp'),
-                'final_step': latest_debug.get('step'),
-                'faces_detected': latest_debug.get('faces_detected', 0),
-                'image_size_bytes': latest_debug.get('image_size_bytes'),
-                'image_shape': latest_debug.get('image_shape'),
-                'error': latest_debug.get('error')
-            })
-        
-        with col2:
-            st.write("**Recognition Results:**")
-            if latest_debug.get('recognition_results'):
-                for i, result in enumerate(latest_debug['recognition_results']):
-                    st.write(f"Face {i+1}: {result}")
+                                st.warning(f"⚠️ **Not logged**: {name} (duplicate)")
             else:
-                st.write("No recognition results")
+                st.warning("⚠️ No faces detected")
         
-        # Show processing history
-        with st.expander("Processing History (Last 10)", expanded=False):
-            recent_debug = st.session_state.debug_info[-10:]
-            for i, debug in enumerate(reversed(recent_debug)):
-                status = "✅" if debug.get('error') is None else "❌"
-                st.write(f"{status} **{debug.get('timestamp')}** - {debug.get('step')} - Faces: {debug.get('faces_detected', 0)}")
-                if debug.get('error'):
-                    st.error(f"Error: {debug['error']}")
-    else:
-        st.info("No debug information available yet.")
-
-
-def show_debug_images(max_debug_images):
-    """Display raw captured images for debugging"""
-    st.subheader("📸 Raw Captured Images")
-    
-    if st.session_state.debug_images:
-        st.write(f"Showing last {len(st.session_state.debug_images)} captured frames:")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
         
-        # Create columns for side-by-side display
-        cols = st.columns(min(3, len(st.session_state.debug_images)))
+        return True
         
-        for i, debug_img in enumerate(reversed(st.session_state.debug_images)):
-            col_idx = i % len(cols)
-            with cols[col_idx]:
-                st.image(
-                    debug_img['image'], 
-                    caption=f"Captured at {debug_img['timestamp']}\nShape: {debug_img['shape']}", 
-                    width=200
-                )
-    else:
-        st.info("No debug images captured yet.")
+    except Exception as e:
+        st.error(f"❌ Runtime processing error: {str(e)}")
+        return False
 
 
-
-
-
-
-
-
-def process_captured_frame(tracker, image_data, confidence_threshold, max_logs):
-    """Process automatically captured frame"""
+def process_opencv_frame(tracker, frame, confidence_threshold, timestamp, debug_mode, max_logs):
+    """Process OpenCV frame directly"""
     try:
-        # Decode base64 image
-        if ',' in image_data:
-            image_data = image_data.split(',')[1]
+        # Save frame temporarily
+        temp_path = f"temp_opencv_{int(time.time())}.jpg"
+        cv2.imwrite(temp_path, frame)
         
-        image_bytes = base64.b64decode(image_data)
-        
-        # Convert to OpenCV format
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        image_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-        if image_array is None:
-            return
-        
-        # Detect faces
-        temp_path = f"temp_auto_{time.time()}.jpg"
-        cv2.imwrite(temp_path, image_array)
-        
-        faces = DeepFace.extract_faces(
-            img_path=temp_path,
-            detector_backend=tracker.detection_backend,
-            enforce_detection=False
-        )
-        
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        
-        if faces:
-            for i, face in enumerate(faces):
-                if isinstance(face, dict):
-                    face_array = (face['face'] * 255).astype(np.uint8)
-                else:
-                    face_array = (face * 255).astype(np.uint8)
+        try:
+            # DeepFace processing
+            faces = DeepFace.extract_faces(
+                img_path=temp_path,
+                detector_backend=tracker.detection_backend,
+                enforce_detection=False
+            )
+            
+            if faces:
+                st.info(f"📹 **Stream detected {len(faces)} face(s)**")
                 
-                # Get embedding
-                embedding = tracker.extract_face_embedding(face_array)
-                
-                if embedding is not None:
-                    # Recognize face
-                    name, confidence = tracker.recognize_face_from_embedding(embedding)
+                for face in faces:
+                    if isinstance(face, dict):
+                        face_array = (face['face'] * 255).astype(np.uint8)
+                    else:
+                        face_array = (face * 255).astype(np.uint8)
                     
-                    if name != "Unknown" and confidence > (confidence_threshold * 100):
-                        action = tracker.determine_action(name)
+                    embedding = tracker.extract_face_embedding(face_array)
+                    if embedding is not None:
+                        name, confidence = tracker.recognize_face_from_embedding(embedding)
                         
-                        # Try to log attendance automatically
-                        success = tracker.log_attendance(name, action, confidence)
+                        st.write(f"📹 **Stream**: {name} ({confidence:.1f}%)")
                         
-                        # Add to detection log
-                        log_entry = {
-                            'name': name,
-                            'confidence': confidence,
-                            'action': action,
-                            'logged': success,
-                            'timestamp': datetime.datetime.now().strftime("%H:%M:%S"),
-                            'face_image': face_array
-                        }
-                        
-                        # Add to session state log (keep only recent entries)
-                        st.session_state.auto_detection_logs.append(log_entry)
-                        if len(st.session_state.auto_detection_logs) > max_logs * 2:
-                            st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-max_logs:]
-                        
-                        # Show immediate notification
-                        if success:
-                            st.toast(f"✅ {name} - {action} logged!", icon="✅")
-                        else:
-                            st.toast(f"⚠️ {name} detected but not logged (too recent)", icon="⚠️")
+                        if name != "Unknown" and confidence >= (confidence_threshold * 100):
+                            action = tracker.determine_action(name)
+                            logged = tracker.log_attendance(name, action, confidence)
+                            
+                            if logged:
+                                st.success(f"📹 **Stream logged**: {name} - {action}")
+            
+            return True
+        
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
     
     except Exception as e:
-        st.error(f"Auto detection error: {e}")
+        st.error(f"❌ OpenCV processing error: {str(e)}")
+        return False
 
-def display_detection_logs(max_logs):
-    """Display automatic detection logs"""
-    st.subheader("📝 Automatic Detection Log")
+
+def clear_runtime_data():
+    """Clear all runtime data"""
+    st.session_state.auto_detection_logs = []
+    st.session_state.capture_counter = 0
+    st.session_state.debug_captures = []
+    st.session_state.runtime_active = False
+    st.session_state.last_refresh_time = time.time()
+
+
+def show_runtime_results(max_logs):
+    """Show runtime results"""
+    st.subheader("📊 Runtime Results")
     
     if st.session_state.auto_detection_logs:
-        # Show recent detections
         recent_logs = st.session_state.auto_detection_logs[-max_logs:]
         
-        for i, log_entry in enumerate(reversed(recent_logs)):
-            with st.expander(f"{log_entry['name']} - {log_entry['timestamp']}", expanded=False):
-                col1, col2 = st.columns([1, 2])
-                
-                with col1:
-                    if 'face_image' in log_entry:
-                        st.image(log_entry['face_image'], caption="Detected Face", width=150)
-                
-                with col2:
-                    st.write(f"**Name:** {log_entry['name']}")
-                    st.write(f"**Confidence:** {log_entry['confidence']:.1f}%")
-                    st.write(f"**Action:** {log_entry['action']}")
-                    st.write(f"**Time:** {log_entry['timestamp']}")
-                    
-                    if log_entry['logged']:
-                        st.success("✅ Successfully logged to attendance")
-                    else:
-                        st.warning("⚠️ Not logged (recent entry or low confidence)")
+        for log in reversed(recent_logs):
+            status = "✅" if log.get('logged', False) else "⚠️"
+            method = log.get('method', 'unknown')
+            
+            with st.expander(f"{status} [{method.upper()}] #{log.get('capture_number', '?')} - {log.get('name', 'Unknown')} - {log.get('timestamp', '')}"):
+                if 'face_image' in log:
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        st.image(log['face_image'], width=150)
+                    with col2:
+                        st.write(f"**Name:** {log.get('name')}")
+                        st.write(f"**Confidence:** {log.get('confidence', 0):.1f}%")
+                        st.write(f"**Method:** {method}")
+                        st.write(f"**Logged:** {'Yes' if log.get('logged') else 'No'}")
     else:
-        st.info("No automatic detections yet. Start auto detection to begin monitoring.")
+        st.info("No runtime results yet")
 
-# Add JavaScript message handler for Streamlit
-def add_message_handler():
-    """Add JavaScript message handler to receive camera captures"""
-    js_code = """
-    <script>
-    window.addEventListener('message', function(event) {
-        if (event.data.type === 'camera-capture') {
-            // Store the captured image data in session state
-            // This would need to be handled via Streamlit's component communication
-            console.log('Received camera capture:', event.data.timestamp);
-        }
-    });
-    </script>
-    """
-    components.html(js_code, height=0)
+
+
+
 
 
 
