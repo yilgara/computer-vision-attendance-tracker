@@ -209,11 +209,12 @@ def show_employee_management(tracker):
                 
                     
                     tracker.save_embeddings()
-                    st.success(f"Processed {len(inner_folders)} employees from ZIP file!")
+                    
                     status_text.empty()
                     progress_bar.empty()
                  
                     st.rerun()
+                    st.success(f"Processed {len(inner_folders)} employees from ZIP file!")
 
         
 
