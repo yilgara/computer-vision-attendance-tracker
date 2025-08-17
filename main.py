@@ -502,7 +502,7 @@ def show_live_recognition(tracker):
     if mode == "Manual Mode":
         show_manual_recognition(tracker)
     else:
-        show_automatic_recognition(tracker)
+        show_automatic_recognition_simple(tracker)
     
     # Manual entry option
     st.subheader("Manual Entry")
@@ -518,6 +518,412 @@ def show_live_recognition(tracker):
                     st.success(f"Manually logged {action} for {selected_employee}!")
                 else:
                     st.warning("Entry was too recent, skipped logging.")
+
+
+
+def show_automatic_recognition_simple(tracker):
+    """Simple automatic recognition using native Streamlit camera input"""
+    st.subheader("🔄 Simple Automatic Recognition Mode")
+    st.info("This mode uses Streamlit's native camera for reliable automatic detection.")
+    
+    # Initialize session state
+    if 'auto_mode_active' not in st.session_state:
+        st.session_state.auto_mode_active = False
+    if 'auto_detection_logs' not in st.session_state:
+        st.session_state.auto_detection_logs = []
+    if 'last_capture_time' not in st.session_state:
+        st.session_state.last_capture_time = 0
+    if 'capture_counter' not in st.session_state:
+        st.session_state.capture_counter = 0
+    if 'debug_captures' not in st.session_state:
+        st.session_state.debug_captures = []
+    
+    # Settings
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        auto_confidence_threshold = st.slider(
+            "Auto-log Confidence Threshold:",
+            min_value=0.5,
+            max_value=1.0,
+            value=max(0.8, tracker.similarity_threshold),
+            step=0.05
+        )
+    
+    with col2:
+        detection_interval = st.number_input(
+            "Detection Interval (seconds):",
+            min_value=2,
+            max_value=30,
+            value=5,
+            help="How often to auto-refresh and capture"
+        )
+    
+    with col3:
+        max_auto_logs = st.number_input(
+            "Max Auto Logs:",
+            min_value=5,
+            max_value=50,
+            value=20
+        )
+    
+    # Debug options
+    st.subheader("🐛 Debug Options")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        debug_mode = st.checkbox("Show Debug Info", value=True)
+        show_captures = st.checkbox("Show Recent Captures", value=True)
+    
+    with col2:
+        max_debug_captures = st.number_input("Max Debug Captures:", min_value=1, max_value=5, value=3)
+    
+    # Control buttons
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("▶️ Start Auto Detection", type="primary"):
+            st.session_state.auto_mode_active = True
+            st.session_state.capture_counter = 0
+            st.session_state.debug_captures = []
+            st.success("✅ Auto detection started!")
+            time.sleep(1)  # Brief pause before first capture
+            st.rerun()
+    
+    with col2:
+        if st.button("⏸️ Stop Auto Detection", type="secondary"):
+            st.session_state.auto_mode_active = False
+            st.info("⏸️ Auto detection stopped")
+            st.rerun()
+    
+    with col3:
+        if st.button("🗑️ Clear All Data"):
+            st.session_state.auto_detection_logs = []
+            st.session_state.debug_captures = []
+            st.session_state.capture_counter = 0
+            st.rerun()
+    
+    # Main auto detection logic
+    if st.session_state.auto_mode_active:
+        run_automatic_detection(
+            tracker, 
+            auto_confidence_threshold, 
+            detection_interval,
+            debug_mode, 
+            show_captures, 
+            max_debug_captures, 
+            max_auto_logs
+        )
+    else:
+        st.info("👆 Click 'Start Auto Detection' to begin monitoring")
+    
+    # Display results
+    if debug_mode:
+        show_debug_status()
+    
+    if show_captures and st.session_state.debug_captures:
+        show_recent_captures(max_debug_captures)
+    
+    show_detection_results(max_auto_logs)
+
+
+def run_automatic_detection(tracker, confidence_threshold, detection_interval, 
+                          debug_mode, show_captures, max_debug_captures, max_auto_logs):
+    """Run the automatic detection loop"""
+    
+    st.success("🟢 **Auto Detection Active**")
+    
+    if debug_mode:
+        st.write(f"🔍 **Status**: Capture #{st.session_state.capture_counter + 1} starting...")
+        st.write(f"🔍 **Settings**: Confidence {confidence_threshold:.2f}, Interval {detection_interval}s")
+    
+    # Create unique key for camera input to force refresh
+    camera_key = f"auto_camera_{st.session_state.capture_counter}_{int(time.time())}"
+    
+    # Native Streamlit camera input - this is guaranteed to work!
+    st.write("📷 **Camera Capture**")
+    picture = st.camera_input(
+        "Auto-capturing for face detection...", 
+        key=camera_key,
+        help=f"Capture #{st.session_state.capture_counter + 1} - Auto-refreshing every {detection_interval}s"
+    )
+    
+    # Process the captured image
+    if picture is not None:
+        st.session_state.capture_counter += 1
+        
+        if debug_mode:
+            st.write(f"✅ **Capture #{st.session_state.capture_counter}** received successfully!")
+        
+        # Process the image
+        success = process_camera_capture(
+            tracker, 
+            picture, 
+            confidence_threshold, 
+            debug_mode, 
+            show_captures, 
+            max_debug_captures, 
+            max_auto_logs
+        )
+        
+        if success and debug_mode:
+            st.write(f"✅ **Processing completed** for capture #{st.session_state.capture_counter}")
+    
+    else:
+        if debug_mode:
+            st.write("⏳ **Waiting for camera capture...**")
+    
+    # Show countdown and auto-refresh
+    if st.session_state.auto_mode_active:
+        show_countdown_and_refresh(detection_interval, debug_mode)
+
+
+def process_camera_capture(tracker, picture, confidence_threshold, debug_mode, 
+                         show_captures, max_debug_captures, max_auto_logs):
+    """Process the captured image from camera input"""
+    
+    try:
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        
+        if debug_mode:
+            st.write(f"🔍 **Step 1**: Converting image at {timestamp}")
+        
+        # Convert to OpenCV format (same as manual mode)
+        image = Image.open(picture)
+        image_array = np.array(image)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        
+        if debug_mode:
+            st.write(f"🔍 **Step 2**: Image shape: {image_array.shape}")
+        
+        # Store for debugging if requested
+        if show_captures:
+            rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+            st.session_state.debug_captures.append({
+                'image': rgb_image,
+                'timestamp': timestamp,
+                'capture_number': st.session_state.capture_counter,
+                'shape': image_array.shape
+            })
+            # Keep only recent captures
+            if len(st.session_state.debug_captures) > max_debug_captures:
+                st.session_state.debug_captures = st.session_state.debug_captures[-max_debug_captures:]
+        
+        # Process with DeepFace (identical to manual mode)
+        temp_path = f"temp_auto_{time.time()}_{st.session_state.capture_counter}.jpg"
+        cv2.imwrite(temp_path, image_array)
+        
+        try:
+            if debug_mode:
+                st.write(f"🔍 **Step 3**: Running DeepFace detection...")
+            
+            faces = DeepFace.extract_faces(
+                img_path=temp_path,
+                detector_backend=tracker.detection_backend,
+                enforce_detection=False
+            )
+            
+            faces_count = len(faces) if faces else 0
+            
+            if debug_mode:
+                st.write(f"🔍 **Step 4**: Found {faces_count} face(s)")
+            
+            if faces:
+                detection_results = []
+                
+                for i, face in enumerate(faces):
+                    if debug_mode:
+                        st.write(f"🔍 **Step 5.{i+1}**: Processing face {i+1}")
+                    
+                    # Extract face array
+                    if isinstance(face, dict):
+                        face_array = (face['face'] * 255).astype(np.uint8)
+                    else:
+                        face_array = (face * 255).astype(np.uint8)
+                    
+                    # Get embedding
+                    embedding = tracker.extract_face_embedding(face_array)
+                    
+                    if embedding is not None:
+                        # Recognize face
+                        name, confidence = tracker.recognize_face_from_embedding(embedding)
+                        
+                        if debug_mode:
+                            st.write(f"🔍 **Step 6.{i+1}**: {name} - {confidence:.1f}%")
+                        
+                        detection_results.append({
+                            'name': name,
+                            'confidence': confidence,
+                            'face_image': face_array
+                        })
+                        
+                        # Auto-log if confidence is high enough
+                        if name != "Unknown" and confidence > (confidence_threshold * 100):
+                            action = tracker.determine_action(name)
+                            
+                            # Try to log attendance
+                            logged = tracker.log_attendance(name, action, confidence)
+                            
+                            # Add to detection log
+                            log_entry = {
+                                'name': name,
+                                'confidence': confidence,
+                                'action': action,
+                                'logged': logged,
+                                'timestamp': timestamp,
+                                'capture_number': st.session_state.capture_counter,
+                                'face_image': face_array
+                            }
+                            
+                            st.session_state.auto_detection_logs.append(log_entry)
+                            if len(st.session_state.auto_detection_logs) > max_auto_logs * 2:
+                                st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-max_auto_logs:]
+                            
+                            # Show immediate feedback
+                            if logged:
+                                st.success(f"✅ **Auto-logged**: {name} - {action} ({confidence:.1f}%)")
+                                st.toast(f"✅ {name} - {action}", icon="✅")
+                            else:
+                                st.warning(f"⚠️ **Detected but not logged**: {name} (recent entry)")
+                                st.toast(f"⚠️ {name} detected", icon="⚠️")
+                            
+                            if debug_mode:
+                                st.write(f"🔍 **Step 7.{i+1}**: Logged {action} - Success: {logged}")
+                        else:
+                            if debug_mode:
+                                reason = "Unknown person" if name == "Unknown" else f"Low confidence ({confidence:.1f}%)"
+                                st.write(f"🔍 **Step 6.{i+1}**: Not logging - {reason}")
+                    else:
+                        if debug_mode:
+                            st.error(f"🔍 **ERROR**: Could not extract embedding for face {i+1}")
+                
+                if debug_mode and detection_results:
+                    st.write(f"🔍 **Summary**: Processed {len(detection_results)} faces successfully")
+                    
+            else:
+                if debug_mode:
+                    st.write("🔍 **Step 4**: No faces detected")
+        
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"❌ **Processing Error**: {str(e)}")
+        if debug_mode:
+            st.write(f"🔍 **ERROR Details**: {e}")
+        return False
+
+
+def show_countdown_and_refresh(detection_interval, debug_mode):
+    """Show countdown and handle auto-refresh"""
+    
+    # Countdown display
+    countdown_placeholder = st.empty()
+    
+    with countdown_placeholder.container():
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"⏱️ **Next capture in {detection_interval} seconds...**")
+        with col2:
+            if st.button("🔄 Capture Now", key="manual_trigger"):
+                st.rerun()
+    
+    # Auto-refresh after interval
+    time.sleep(detection_interval)
+    
+    if st.session_state.auto_mode_active:  # Check if still active
+        if debug_mode:
+            st.write(f"🔄 **Auto-refreshing** after {detection_interval}s interval...")
+        st.rerun()
+
+
+def show_debug_status():
+    """Show debug status information"""
+    st.subheader("🐛 Debug Status")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Captures", st.session_state.capture_counter)
+    
+    with col2:
+        st.metric("Detection Logs", len(st.session_state.auto_detection_logs))
+    
+    with col3:
+        st.metric("Debug Captures Stored", len(st.session_state.debug_captures))
+    
+    # Show recent activity
+    if st.session_state.auto_detection_logs:
+        latest_log = st.session_state.auto_detection_logs[-1]
+        st.info(f"🕐 **Latest Detection**: {latest_log['name']} at {latest_log['timestamp']}")
+
+
+def show_recent_captures(max_debug_captures):
+    """Show recent captured images"""
+    st.subheader("📸 Recent Captures")
+    
+    if st.session_state.debug_captures:
+        cols = st.columns(min(3, len(st.session_state.debug_captures)))
+        
+        for i, capture in enumerate(reversed(st.session_state.debug_captures)):
+            col_idx = i % len(cols)
+            with cols[col_idx]:
+                st.image(
+                    capture['image'],
+                    caption=f"Capture #{capture['capture_number']}\n{capture['timestamp']}\n{capture['shape']}",
+                    width=200
+                )
+    else:
+        st.info("No captures yet")
+
+
+def show_detection_results(max_auto_logs):
+    """Show detection results log"""
+    st.subheader("📝 Auto Detection Log")
+    
+    if st.session_state.auto_detection_logs:
+        # Show summary
+        total_detections = len(st.session_state.auto_detection_logs)
+        successful_logs = len([log for log in st.session_state.auto_detection_logs if log['logged']])
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Detections", total_detections)
+        with col2:
+            st.metric("Successfully Logged", successful_logs)
+        
+        # Show recent detections
+        recent_logs = st.session_state.auto_detection_logs[-max_auto_logs:]
+        
+        for log_entry in reversed(recent_logs):
+            status_icon = "✅" if log_entry['logged'] else "⚠️"
+            
+            with st.expander(f"{status_icon} Capture #{log_entry['capture_number']} - {log_entry['name']} ({log_entry['timestamp']})", expanded=False):
+                col1, col2 = st.columns([1, 2])
+                
+                with col1:
+                    st.image(log_entry['face_image'], caption="Detected Face", width=150)
+                
+                with col2:
+                    st.write(f"**Name:** {log_entry['name']}")
+                    st.write(f"**Confidence:** {log_entry['confidence']:.1f}%")
+                    st.write(f"**Action:** {log_entry['action']}")
+                    st.write(f"**Time:** {log_entry['timestamp']}")
+                    st.write(f"**Capture:** #{log_entry['capture_number']}")
+                    
+                    if log_entry['logged']:
+                        st.success("✅ Successfully logged to attendance")
+                    else:
+                        st.warning("⚠️ Not logged (recent entry)")
+    else:
+        st.info("No detections yet. Start auto detection to begin monitoring.")
+
+
+
 
 
 
