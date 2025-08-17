@@ -495,12 +495,14 @@ def show_live_recognition(tracker):
     st.subheader("Recognition Mode")
     mode = st.radio(
         "Select Recognition Mode:",
-        options=["Manual Mode", "Automatic Mode"],
+        options=["Manual Mode", "Automatic Mode", "dio"],
         help="Manual: Take picture manually and approve logging. Automatic: Continuous detection with auto-logging."
     )
     
     if mode == "Manual Mode":
         show_manual_recognition(tracker)
+    elif mode == "dio":
+        show_complete_diagnostic(tracker)
     else:
         show_automatic_recognition(tracker)
     
@@ -869,6 +871,488 @@ def show_automatic_recognition(tracker):
     
     # Display automatic detection logs
     display_detection_logs(max_auto_logs)
+
+
+
+def diagnose_tracker_object(tracker):
+    """Comprehensive diagnosis of the tracker object"""
+    st.subheader("🔧 Tracker Object Diagnosis")
+    
+    # Check if tracker exists
+    if tracker is None:
+        st.error("❌ Tracker object is None!")
+        return False
+    
+    st.success("✅ Tracker object exists")
+    
+    # Check tracker attributes
+    st.write("**Tracker Attributes:**")
+    
+    # Check for known_embeddings
+    if hasattr(tracker, 'known_embeddings'):
+        if tracker.known_embeddings:
+            st.success(f"✅ known_embeddings: {len(tracker.known_embeddings)} embeddings found")
+        else:
+            st.error("❌ known_embeddings exists but is empty!")
+    else:
+        st.error("❌ Tracker has no 'known_embeddings' attribute!")
+    
+    # Check for known_names
+    if hasattr(tracker, 'known_names'):
+        if tracker.known_names:
+            st.success(f"✅ known_names: {len(tracker.known_names)} names found")
+            st.write(f"Names: {list(set(tracker.known_names))}")
+        else:
+            st.error("❌ known_names exists but is empty!")
+    else:
+        st.error("❌ Tracker has no 'known_names' attribute!")
+    
+    # Check essential methods
+    essential_methods = [
+        'extract_face_embedding',
+        'recognize_face_from_embedding', 
+        'determine_action',
+        'log_attendance',
+        'load_embeddings'
+    ]
+    
+    st.write("**Required Methods:**")
+    missing_methods = []
+    
+    for method in essential_methods:
+        if hasattr(tracker, method):
+            st.success(f"✅ {method}")
+        else:
+            st.error(f"❌ {method}")
+            missing_methods.append(method)
+    
+    # Check other important attributes
+    other_attributes = [
+        'similarity_threshold',
+        'detection_backend',
+        'model_name'
+    ]
+    
+    st.write("**Other Attributes:**")
+    for attr in other_attributes:
+        if hasattr(tracker, attr):
+            value = getattr(tracker, attr)
+            st.success(f"✅ {attr}: {value}")
+        else:
+            st.warning(f"⚠️ {attr}: Not found")
+    
+    # Show all attributes of the tracker
+    with st.expander("🔍 All Tracker Attributes"):
+        all_attrs = [attr for attr in dir(tracker) if not attr.startswith('_')]
+        for attr in all_attrs:
+            try:
+                value = getattr(tracker, attr)
+                if callable(value):
+                    st.write(f"**{attr}()** - Method")
+                else:
+                    st.write(f"**{attr}** = {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}")
+            except Exception as e:
+                st.write(f"**{attr}** - Error accessing: {str(e)}")
+    
+    return len(missing_methods) == 0
+
+def test_face_detection_pipeline():
+    """Test the complete face detection pipeline step by step"""
+    st.subheader("🧪 Face Detection Pipeline Test")
+    
+    # Create a test image with a face
+    uploaded_file = st.file_uploader("Upload a test image with a clear face", type=['jpg', 'jpeg', 'png'])
+    
+    if uploaded_file is not None:
+        # Display the uploaded image
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Test Image", width=400)
+        
+        # Convert to OpenCV format
+        image_array = np.array(image)
+        if len(image_array.shape) == 3:
+            image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        
+        st.write("**Step 1: Image Conversion**")
+        st.success(f"✅ Image converted to OpenCV format: {image_array.shape}")
+        
+        # Test different detection backends
+        backends = ['opencv', 'ssd', 'mtcnn', 'retinaface', 'mediapipe']
+        
+        for backend in backends:
+            st.write(f"**Step 2: Testing {backend} backend**")
+            
+            try:
+                # Save to temporary file
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
+                    temp_path = tmp_file.name
+                
+                success = cv2.imwrite(temp_path, image_array)
+                
+                if not success:
+                    st.error(f"❌ Failed to save image for {backend}")
+                    continue
+                
+                st.success(f"✅ Image saved to temporary file")
+                
+                # Extract faces
+                faces = DeepFace.extract_faces(
+                    img_path=temp_path,
+                    detector_backend=backend,
+                    enforce_detection=False
+                )
+                
+                # Clean up
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                
+                if faces and len(faces) > 0:
+                    st.success(f"✅ {backend}: Detected {len(faces)} face(s)")
+                    
+                    # Show detected faces
+                    for i, face in enumerate(faces):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if isinstance(face, dict):
+                                face_array = (face['face'] * 255).astype(np.uint8)
+                            else:
+                                face_array = (face * 255).astype(np.uint8)
+                            
+                            st.image(face_array, caption=f"Face {i+1} ({backend})", width=150)
+                        
+                        with col2:
+                            st.write(f"Face shape: {face_array.shape}")
+                            st.write(f"Face type: {type(face_array)}")
+                            st.write(f"Face dtype: {face_array.dtype}")
+                            
+                        # This is where we would test embedding extraction
+                        st.write(f"**Step 3: Ready for embedding extraction with {backend}**")
+                        
+                        return backend, face_array  # Return successful backend and face for further testing
+                        
+                else:
+                    st.error(f"❌ {backend}: No faces detected")
+                    
+            except Exception as e:
+                st.error(f"❌ {backend}: Error - {str(e)}")
+    
+    return None, None
+
+def test_embedding_extraction(tracker, face_array):
+    """Test embedding extraction with the tracker"""
+    st.subheader("🔍 Embedding Extraction Test")
+    
+    if face_array is None:
+        st.warning("No face array provided. Run face detection test first.")
+        return None
+    
+    try:
+        st.write("**Testing tracker.extract_face_embedding()**")
+        
+        # Test embedding extraction
+        embedding = tracker.extract_face_embedding(face_array)
+        
+        if embedding is not None:
+            st.success(f"✅ Embedding extracted successfully!")
+            st.write(f"Embedding shape: {embedding.shape if hasattr(embedding, 'shape') else 'No shape attr'}")
+            st.write(f"Embedding type: {type(embedding)}")
+            st.write(f"Embedding sample: {str(embedding)[:100]}...")
+            return embedding
+        else:
+            st.error("❌ extract_face_embedding returned None")
+            
+            # Try to debug why
+            st.write("**Debugging embedding extraction:**")
+            
+            # Check if it's a method
+            if not hasattr(tracker, 'extract_face_embedding'):
+                st.error("Tracker has no extract_face_embedding method")
+            elif not callable(getattr(tracker, 'extract_face_embedding')):
+                st.error("extract_face_embedding is not callable")
+            else:
+                st.write("extract_face_embedding method exists and is callable")
+                
+                # Try with different face array formats
+                st.write("Trying different face array formats...")
+                
+                # Try as float
+                try:
+                    face_float = face_array.astype(np.float32) / 255.0
+                    embedding = tracker.extract_face_embedding(face_float)
+                    if embedding is not None:
+                        st.success("✅ Works with float32 normalized array")
+                        return embedding
+                except Exception as e:
+                    st.write(f"Float32 format failed: {str(e)}")
+                
+                # Try with PIL Image
+                try:
+                    face_pil = Image.fromarray(cv2.cvtColor(face_array, cv2.COLOR_BGR2RGB))
+                    embedding = tracker.extract_face_embedding(face_pil)
+                    if embedding is not None:
+                        st.success("✅ Works with PIL Image")
+                        return embedding
+                except Exception as e:
+                    st.write(f"PIL Image format failed: {str(e)}")
+            
+            return None
+            
+    except Exception as e:
+        st.error(f"❌ Error in embedding extraction: {str(e)}")
+        
+        # Show full traceback
+        import traceback
+        st.code(traceback.format_exc())
+        
+        return None
+
+def test_face_recognition(tracker, embedding):
+    """Test face recognition with the embedding"""
+    st.subheader("🎯 Face Recognition Test")
+    
+    if embedding is None:
+        st.warning("No embedding provided. Run embedding extraction test first.")
+        return None, None
+    
+    try:
+        st.write("**Testing tracker.recognize_face_from_embedding()**")
+        
+        # Test recognition
+        name, confidence = tracker.recognize_face_from_embedding(embedding)
+        
+        st.success(f"✅ Recognition completed!")
+        st.write(f"**Name:** {name}")
+        st.write(f"**Confidence:** {confidence}")
+        st.write(f"**Name type:** {type(name)}")
+        st.write(f"**Confidence type:** {type(confidence)}")
+        
+        return name, confidence
+        
+    except Exception as e:
+        st.error(f"❌ Error in face recognition: {str(e)}")
+        
+        # Show full traceback
+        import traceback
+        st.code(traceback.format_exc())
+        
+        return None, None
+
+def test_attendance_logging(tracker, name, confidence):
+    """Test attendance logging"""
+    st.subheader("📝 Attendance Logging Test")
+    
+    if name is None or confidence is None:
+        st.warning("No name/confidence provided. Run face recognition test first.")
+        return
+    
+    try:
+        if name == "Unknown":
+            st.info("Cannot test logging with Unknown person")
+            return
+        
+        st.write("**Testing tracker.determine_action()**")
+        action = tracker.determine_action(name)
+        st.success(f"✅ Action determined: {action}")
+        
+        st.write("**Testing tracker.log_attendance()**")
+        
+        # Show what would be logged
+        st.write(f"Would log: {action} for {name} with {confidence} confidence")
+        
+        if st.button("Actually Log This Attendance"):
+            success = tracker.log_attendance(name, action, confidence)
+            
+            if success:
+                st.success(f"✅ Successfully logged {action} for {name}!")
+            else:
+                st.warning("⚠️ Logging returned False (might be too recent)")
+        
+    except Exception as e:
+        st.error(f"❌ Error in attendance logging: {str(e)}")
+        
+        # Show full traceback
+        import traceback
+        st.code(traceback.format_exc())
+
+def show_complete_diagnostic(tracker):
+    """Show complete diagnostic interface"""
+    st.header("🔧 Complete Face Recognition Diagnostic")
+    st.info("This will help identify exactly what's wrong with your face recognition system")
+    
+    # Step 1: Diagnose tracker
+    st.markdown("---")
+    tracker_ok = diagnose_tracker_object(tracker)
+    
+    if not tracker_ok:
+        st.error("🛑 Tracker object has missing methods. Fix tracker first before proceeding.")
+        return
+    
+    # Step 2: Test face detection
+    st.markdown("---")
+    backend, face_array = test_face_detection_pipeline()
+    
+    if face_array is None:
+        st.warning("🛑 Face detection failed. Upload a clear image with a visible face.")
+        return
+    
+    # Step 3: Test embedding extraction
+    st.markdown("---")
+    embedding = test_embedding_extraction(tracker, face_array)
+    
+    if embedding is None:
+        st.error("🛑 Embedding extraction failed. Check tracker's extract_face_embedding method.")
+        return
+    
+    # Step 4: Test face recognition
+    st.markdown("---")
+    name, confidence = test_face_recognition(tracker, embedding)
+    
+    if name is None:
+        st.error("🛑 Face recognition failed. Check tracker's recognize_face_from_embedding method.")
+        return
+    
+    # Step 5: Test attendance logging
+    st.markdown("---")
+    test_attendance_logging(tracker, name, confidence)
+    
+    # Final summary
+    st.markdown("---")
+    st.subheader("📋 Diagnostic Summary")
+    
+    if name != "Unknown":
+        st.success("🎉 Complete pipeline working! Face recognition system is functional.")
+        st.info("If automatic detection still doesn't work, the issue is likely in the camera loop or frame processing.")
+    else:
+        st.warning("⚠️ Pipeline works but person not recognized. This means:")
+        st.write("1. Face detection: ✅ Working")
+        st.write("2. Embedding extraction: ✅ Working") 
+        st.write("3. Face recognition: ✅ Working (but person unknown)")
+        st.write("4. Issue: Person not in training data or confidence too low")
+
+def create_simple_test_camera():
+    """Create a simple camera test that manually processes one image"""
+    st.subheader("📸 Simple Camera Test")
+    st.info("Take a photo and manually process it step by step")
+    
+    picture = st.camera_input("Take a test picture")
+    
+    if picture is not None:
+        return picture
+    
+    return None
+
+def process_test_image_step_by_step(tracker, picture):
+    """Process a test image step by step with full debugging"""
+    st.subheader("🔍 Step-by-Step Image Processing")
+    
+    try:
+        # Step 1: Load and convert image
+        st.write("**Step 1: Loading image...**")
+        image = Image.open(picture)
+        st.image(image, caption="Original Image", width=300)
+        
+        image_array = np.array(image)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        st.success(f"✅ Image loaded and converted: {image_array.shape}")
+        
+        # Step 2: Save to temporary file
+        st.write("**Step 2: Saving to temporary file...**")
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
+            temp_path = tmp_file.name
+        
+        success = cv2.imwrite(temp_path, image_array)
+        if success:
+            st.success(f"✅ Image saved to: {temp_path}")
+        else:
+            st.error("❌ Failed to save image")
+            return
+        
+        # Step 3: Face detection
+        st.write("**Step 3: Detecting faces...**")
+        
+        backend = st.selectbox("Choose detection backend:", ['opencv', 'ssd', 'mtcnn'], key="test_backend")
+        
+        faces = DeepFace.extract_faces(
+            img_path=temp_path,
+            detector_backend=backend,
+            enforce_detection=False
+        )
+        
+        # Clean up temp file
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        
+        if not faces or len(faces) == 0:
+            st.error(f"❌ No faces detected with {backend} backend")
+            return
+        
+        st.success(f"✅ Found {len(faces)} face(s)")
+        
+        # Step 4: Process each face
+        for i, face in enumerate(faces):
+            st.write(f"**Step 4.{i+1}: Processing face {i+1}...**")
+            
+            # Convert face to proper format
+            if isinstance(face, dict):
+                face_array = (face['face'] * 255).astype(np.uint8)
+            else:
+                face_array = (face * 255).astype(np.uint8)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.image(face_array, caption=f"Detected Face {i+1}", width=200)
+            
+            with col2:
+                st.write(f"Face shape: {face_array.shape}")
+                st.write(f"Face dtype: {face_array.dtype}")
+                
+                # Step 5: Extract embedding
+                st.write(f"**Step 5.{i+1}: Extracting embedding...**")
+                
+                embedding = tracker.extract_face_embedding(face_array)
+                
+                if embedding is not None:
+                    st.success("✅ Embedding extracted")
+                    st.write(f"Embedding type: {type(embedding)}")
+                    
+                    # Step 6: Recognize face
+                    st.write(f"**Step 6.{i+1}: Recognizing face...**")
+                    
+                    name, confidence = tracker.recognize_face_from_embedding(embedding)
+                    
+                    st.write(f"**Name:** {name}")
+                    st.write(f"**Confidence:** {confidence:.1f}%")
+                    
+                    # Step 7: Check threshold and determine action
+                    threshold = getattr(tracker, 'similarity_threshold', 0.8) * 100
+                    st.write(f"**Threshold:** {threshold}%")
+                    
+                    if name != "Unknown" and confidence > threshold:
+                        st.success(f"✅ Recognition successful! Above threshold.")
+                        
+                        action = tracker.determine_action(name)
+                        st.write(f"**Action:** {action}")
+                        
+                        # Option to log
+                        if st.button(f"Log {action} for {name}", key=f"log_test_{i}"):
+                            success = tracker.log_attendance(name, action, confidence)
+                            if success:
+                                st.success(f"✅ Successfully logged {action} for {name}!")
+                            else:
+                                st.warning("⚠️ Not logged (too recent or other issue)")
+                    else:
+                        st.warning(f"⚠️ Below threshold or unknown: {name} ({confidence:.1f}% < {threshold}%)")
+                
+                else:
+                    st.error("❌ Failed to extract embedding")
+    
+    except Exception as e:
+        st.error(f"❌ Error in processing: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+
 
 def process_captured_frame(tracker, image_data, confidence_threshold, max_logs):
     """Process automatically captured frame"""
