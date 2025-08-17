@@ -16,7 +16,7 @@ from PIL import Image
 import io
 import zipfile
 import base64
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 
 warnings.filterwarnings("ignore")
 
