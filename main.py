@@ -658,17 +658,18 @@ def show_automatic_recognition(tracker):
     max_logs = st.number_input("Max Auto Logs:", 5, 100, 20)
 
     # start WebRTC stream
-   webrtc_streamer(
-    key="auto",
-    mode=WebRtcMode.SENDRECV,
-    video_processor_factory=lambda: VideoProcessor(tracker),   # ✅ passes tracker
-    rtc_configuration={
-        "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]},
-            {"urls": ["turn:openrelay.metered.ca:80"], "username": "openrelayproject", "credential": "openrelayproject"},
-        ]
-    },
-    media_stream_constraints={"video": True, "audio": False})
+    webrtc_streamer(
+        key="auto",
+        mode=WebRtcMode.SENDRECV,
+        video_processor_factory=lambda: VideoProcessor(tracker),   # ✅ passes tracker
+        rtc_configuration={
+            "iceServers": [
+                {"urls": ["stun:stun.l.google.com:19302"]},
+                {"urls": ["turn:openrelay.metered.ca:80"], "username": "openrelayproject", "credential": "openrelayproject"},
+            ]
+        },
+        media_stream_constraints={"video": True, "audio": False}
+    )
 
     # Show logs in UI
     st.subheader("📝 Automatic Detection Log")
