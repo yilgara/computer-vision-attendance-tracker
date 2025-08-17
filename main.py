@@ -16,6 +16,7 @@ from PIL import Image
 import io
 import zipfile
 import base64
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 
 warnings.filterwarnings("ignore")
 
@@ -596,113 +597,80 @@ def show_manual_recognition(tracker):
             except Exception as e:
                 st.error(f"Error processing image: {e}")
 
-def show_automatic_recognition(tracker):
-    """Automatic recognition mode with continuous detection"""
-    st.subheader("🔄 Automatic Recognition Mode")
-    st.info("Camera will continuously monitor for faces and automatically log attendance.")
+class VideoProcessor(VideoProcessorBase):
+    def __init__(self, tracker, confidence_threshold=0.8, max_logs=20):
+        self.tracker = tracker
+        self.confidence_threshold = confidence_threshold
+        self.max_logs = max_logs
 
-    if 'auto_mode_active' not in st.session_state:
-        st.session_state.auto_mode_active = False
-    if 'auto_detection_logs' not in st.session_state:
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+
+        try:
+            faces = DeepFace.extract_faces(
+                img_path=img,
+                detector_backend=self.tracker.detection_backend,
+                enforce_detection=False
+            )
+            for face in faces:
+                face_array = (face["face"] * 255).astype(np.uint8)
+                embedding = self.tracker.extract_face_embedding(face_array)
+                if embedding is not None:
+                    name, confidence = self.tracker.recognize_face_from_embedding(embedding)
+                    if name != "Unknown" and confidence > (self.confidence_threshold * 100):
+                        action = self.tracker.determine_action(name)
+                        success = self.tracker.log_attendance(name, action, confidence)
+
+                        log_entry = {
+                            "name": name,
+                            "confidence": confidence,
+                            "action": action,
+                            "logged": success,
+                            "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
+                        }
+                        st.session_state.auto_detection_logs.append(log_entry)
+                        if len(st.session_state.auto_detection_logs) > self.max_logs * 2:
+                            st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-self.max_logs:]
+
+                        if success:
+                            st.toast(f"✅ {name} - {action} logged!", icon="✅")
+                        else:
+                            st.toast(f"⚠️ {name} detected but not logged (too recent)", icon="⚠️")
+
+        except Exception as e:
+            st.error(f"Auto detection error: {e}")
+
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+
+def show_automatic_recognition(tracker):
+    """Automatic recognition mode with continuous detection (WebRTC for Streamlit Cloud)"""
+    st.subheader("🔄 Automatic Recognition Mode (WebRTC)")
+
+    if "auto_detection_logs" not in st.session_state:
         st.session_state.auto_detection_logs = []
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        auto_confidence_threshold = st.slider("Auto-log Confidence Threshold:",
-                                              0.5, 1.0,
-                                              max(0.8, tracker.similarity_threshold),
-                                              0.05)
-    with col2:
-        detection_interval = st.number_input("Detection Interval (seconds):", 1, 30, 3)
-    with col3:
-        max_auto_logs = st.number_input("Max Auto Logs:", 5, 100, 20)
+    confidence_threshold = st.slider("Auto-log Confidence Threshold:", 0.5, 1.0,
+                                     max(0.8, tracker.similarity_threshold), 0.05)
+    max_logs = st.number_input("Max Auto Logs:", 5, 100, 20)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("▶️ Start Auto Detection", type="primary"):
-            st.session_state.auto_mode_active = True
-    with col2:
-        if st.button("⏸️ Stop Auto Detection", type="secondary"):
-            st.session_state.auto_mode_active = False
-    with col3:
-        if st.button("🗑️ Clear Logs"):
-            st.session_state.auto_detection_logs = []
+    webrtc_streamer(
+        key="auto",
+        video_processor_factory=lambda: VideoProcessor(tracker, confidence_threshold, max_logs),
+        media_stream_constraints={"video": True, "audio": False}
+    )
 
-    if st.session_state.auto_mode_active:
-        stframe = st.empty()  # placeholder for video
-        cap = cv2.VideoCapture(0)  # 0 = default camera (works on PC & web if WebRTC supported)
-        last_time = time.time()
-
-        while st.session_state.auto_mode_active:
-            ret, frame = cap.read()
-            if not ret:
-                st.error("Failed to capture video.")
-                break
-
-            # Only process every N seconds
-            if time.time() - last_time >= detection_interval:
-                last_time = time.time()
-                process_frame_for_recognition(tracker, frame,
-                                              auto_confidence_threshold,
-                                              max_auto_logs)
-
-            # Convert frame to RGB for display
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            stframe.image(rgb_frame, channels="RGB")
-
-            # Break loop if stop button is pressed
-            if not st.session_state.auto_mode_active:
-                break
-
-        cap.release()
-    else:
-        st.info("🔴 Auto Detection Stopped")
-        st.image(np.zeros((480, 640, 3), dtype=np.uint8), caption="Camera Preview Disabled")
-
-
-def process_frame_for_recognition(tracker, frame, confidence_threshold, max_logs):
-    """Process a frame for face recognition"""
-    try:
-        # Save temporary frame
-        temp_path = "temp_auto_frame.jpg"
-        cv2.imwrite(temp_path, frame)
-
-        faces = DeepFace.extract_faces(
-            img_path=temp_path,
-            detector_backend=tracker.detection_backend,
-            enforce_detection=False
-        )
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-
-        for face in faces:
-            face_array = (face['face'] * 255).astype(np.uint8)
-
-            embedding = tracker.extract_face_embedding(face_array)
-            if embedding is not None:
-                name, confidence = tracker.recognize_face_from_embedding(embedding)
-                if name != "Unknown" and confidence > (confidence_threshold * 100):
-                    action = tracker.determine_action(name)
-                    success = tracker.log_attendance(name, action, confidence)
-
-                    log_entry = {
-                        'name': name,
-                        'confidence': confidence,
-                        'action': action,
-                        'logged': success,
-                        'timestamp': datetime.datetime.now().strftime("%H:%M:%S")
-                    }
-                    st.session_state.auto_detection_logs.append(log_entry)
-                    if len(st.session_state.auto_detection_logs) > max_logs * 2:
-                        st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-max_logs:]
-
-                    if success:
-                        st.toast(f"✅ {name} - {action} logged!", icon="✅")
-                    else:
-                        st.toast(f"⚠️ {name} detected but not logged (too recent)", icon="⚠️")
-
-    except Exception as e:
-        st.error(f"Error in recognition: {e}")
+    st.subheader("📝 Automatic Detection Log")
+    for log_entry in reversed(st.session_state.auto_detection_logs[-max_logs:]):
+        cols = st.columns([2, 2, 2, 2])
+        cols[0].write(f"**{log_entry['name']}**")
+        cols[1].write(f"Confidence: {log_entry['confidence']:.1f}%")
+        cols[2].write(f"Action: {log_entry['action']}")
+        cols[3].write(f"Time: {log_entry['timestamp']}")
+        if log_entry["logged"]:
+            st.success("✅ Logged")
+        else:
+            st.warning("⚠️ Skipped")
 
 
 
