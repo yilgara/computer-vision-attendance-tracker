@@ -15,7 +15,7 @@ import shutil
 from PIL import Image
 import io
 import zipfile
-import base64
+
 
 
 
