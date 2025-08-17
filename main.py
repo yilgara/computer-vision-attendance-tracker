@@ -504,7 +504,7 @@ def show_live_recognition(tracker):
     elif mode == "DIO":
         show_complete_diagnostic(tracker)
     else:
-        show_complete_diagnostic(tracker)
+        show_automatic_diagnostic(tracker)
     
     # Manual entry option
     st.subheader("Manual Entry")
@@ -600,30 +600,7 @@ def show_manual_recognition(tracker):
             except Exception as e:
                 st.error(f"Error processing image: {e}")
 
-def show_live_recognition(tracker):
-    """Show live face recognition interface"""
-    st.header("Live Face Recognition")
-    
-    # Load embeddings if not loaded
-    if not tracker.known_embeddings:
-        if not tracker.load_embeddings():
-            st.warning("No trained face embeddings found. Please add employees first.")
-            return
-    
-    st.info(f"System ready with {len(set(tracker.known_names))} registered employees")
-    
-    # Mode selection
-    st.subheader("Recognition Mode")
-    mode = st.radio(
-        "Select Recognition Mode:",
-        options=["Manual Mode", "Automatic Mode"],
-        help="Manual: Take picture manually and approve logging. Automatic: Continuous detection with auto-logging."
-    )
-    
-    if mode == "Manual Mode":
-        show_manual_recognition(tracker)
-    else:
-        show_automatic_recognition(tracker)
+
 
 def show_manual_recognition(tracker):
     """Manual recognition mode - existing functionality"""
