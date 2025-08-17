@@ -495,13 +495,13 @@ def show_live_recognition(tracker):
     st.subheader("Recognition Mode")
     mode = st.radio(
         "Select Recognition Mode:",
-        options=["Manual Mode", "Automatic Mode", "dio"],
+        options=["Manual Mode", "Automatic Mode", "DIO"],
         help="Manual: Take picture manually and approve logging. Automatic: Continuous detection with auto-logging."
     )
     
     if mode == "Manual Mode":
         show_manual_recognition(tracker)
-    elif mode == "dio":
+    elif mode == "DIO":
         show_complete_diagnostic(tracker)
     else:
         show_automatic_recognition(tracker)
