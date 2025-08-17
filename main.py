@@ -504,7 +504,7 @@ def show_live_recognition(tracker):
     elif mode == "DIO":
         show_complete_diagnostic(tracker)
     else:
-        show_automatic_recognition(tracker)
+        show_complete_diagnostic(tracker)
     
     # Manual entry option
     st.subheader("Manual Entry")
