@@ -205,7 +205,7 @@ def show_employee_management(tracker):
                         progress_bar.progress((i + 1) / len(inner_folders))
                 
                     
-                        tracker.save_embeddings()
-                        st.success(f"Processed {len(inner_folders)} employees from ZIP file!")
-                        status_text.empty()
-                        progress_bar.empty()
+                    tracker.save_embeddings()
+                    st.success(f"Processed {len(inner_folders)} employees from ZIP file!")
+                    status_text.empty()
+                    progress_bar.empty()
