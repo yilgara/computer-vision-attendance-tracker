@@ -52,11 +52,11 @@ def show_manual_recognition(tracker):
     picture = st.camera_input("Take a picture for face recognition")
 
     if picture is not None:
-        # Initialize session state for this specific picture
+        # Store the processed faces in session_state to avoid reprocessing
         if "detected_faces" not in st.session_state:
             st.session_state.detected_faces = []
-        
-        # Only process if we don't have faces yet
+
+        # Process the image only once
         if not st.session_state.detected_faces:
             image = Image.open(picture)
             image_array = np.array(image)
@@ -86,50 +86,41 @@ def show_manual_recognition(tracker):
                     st.error(f"Error processing image: {e}")
                     return
 
-        # Step 2: Show detected faces if we have any
-        if st.session_state.detected_faces:
-            for i, face in enumerate(st.session_state.detected_faces):
-                if isinstance(face, dict):
-                    face_array = (face['face'] * 255).astype(np.uint8)
-                else:
-                    face_array = (face * 255).astype(np.uint8)
+        # Step 2: Show detected faces (from session_state, no reprocessing)
+        for i, face in enumerate(st.session_state.detected_faces):
+            if isinstance(face, dict):
+                face_array = (face['face'] * 255).astype(np.uint8)
+            else:
+                face_array = (face * 255).astype(np.uint8)
 
-                embedding = tracker.extract_face_embedding(face_array)
-                if embedding is not None:
-                    name, confidence = tracker.recognize_face_from_embedding(embedding)
+            embedding = tracker.extract_face_embedding(face_array)
+            if embedding is not None:
+                name, confidence = tracker.recognize_face_from_embedding(embedding)
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.image(face_array, caption=f"Face {i+1}", width=200)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.image(face_array, caption=f"Face {i+1}", width=200)
 
-                    with col2:
-                        st.write("**Recognition Result:**")
-                        st.write(f"Name: {name}")
-                        st.write(f"Confidence: {confidence:.1f}%")
+                with col2:
+                    st.write("**Recognition Result:**")
+                    st.write(f"Name: {name}")
+                    st.write(f"Confidence: {confidence:.1f}%")
 
-                        if name != "Unknown" and confidence > (tracker.similarity_threshold * 100):
-                            action = tracker.determine_action(name)
+                    if name != "Unknown" and confidence > (tracker.similarity_threshold * 100):
+                        action = tracker.determine_action(name)
 
-                            if st.button(f"Log {action} for {name}", key=f"log_{i}"):
-                                success = tracker.log_attendance(name, action, confidence)
-                                if success:
-                                    st.success(f"Logged {action} for {name}!")
-                                else:
-                                    st.warning("Entry was too recent, skipped logging.")
-                                
-                                # Clear the faces so user can take a new picture
+                        if st.button(f"Log {action} for {name}", key=f"log_{i}"):
+                            success = tracker.log_attendance(name, action, confidence)
+                            if success:
+                                st.success(f"Logged {action} for {name}!")
+                                # Clear session state after logging
                                 st.session_state.detected_faces = []
-                                st.rerun()
-                        else:
-                            st.warning("Confidence too low or unknown person")
-                else:
-                    st.error(f"Could not process face {i+1}")
-    
-        # Add a button to clear and start over
-        if st.session_state.get("detected_faces", []):
-            if st.button("Take New Picture"):
-                st.session_state.detected_faces = []
-                st.rerun()
+                            else:
+                                st.warning("Entry was too recent, skipped logging.")
+                    else:
+                        st.warning("Confidence too low or unknown person")
+            else:
+                st.error(f"Could not process face {i+1}")
    
 
 
