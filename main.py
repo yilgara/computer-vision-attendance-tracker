@@ -611,8 +611,9 @@ class VideoProcessor(VideoProcessorBase):
         # process every 10th frame (reduce load)
         if self.frame_count % 10 == 0:
             try:
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 faces = DeepFace.extract_faces(
-                    img_path=img,  # numpy frame
+                    img_path=img_rgb,
                     detector_backend=self.tracker.detection_backend,
                     enforce_detection=False
                 )
