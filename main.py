@@ -521,15 +521,6 @@ def show_live_recognition(tracker):
 
 
 
-import streamlit as st
-import cv2
-import numpy as np
-import time
-import datetime
-import os
-from PIL import Image
-from deepface import DeepFace
-
 def show_automatic_recognition_simple(tracker):
     """Simple automatic recognition using native Streamlit camera input"""
     st.subheader("🔄 Simple Automatic Recognition Mode")
@@ -546,6 +537,18 @@ def show_automatic_recognition_simple(tracker):
         st.session_state.capture_counter = 0
     if 'debug_captures' not in st.session_state:
         st.session_state.debug_captures = []
+    
+    # IMMEDIATE DEBUG INFO AT THE TOP - ALWAYS VISIBLE
+    st.write("🔍 **IMMEDIATE DEBUG STATUS** (Top of page)")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Auto Active", "✅" if st.session_state.auto_mode_active else "❌")
+    with col2:
+        st.metric("Captures", st.session_state.capture_counter)
+    with col3:
+        st.metric("Logs", len(st.session_state.auto_detection_logs))
+    with col4:
+        st.metric("Time", datetime.datetime.now().strftime("%H:%M:%S"))
     
     # Settings
     col1, col2, col3 = st.columns(3)
@@ -614,6 +617,13 @@ def show_automatic_recognition_simple(tracker):
     
     # Main auto detection logic
     if st.session_state.auto_mode_active:
+        # SHOW DEBUG BEFORE RUNNING AUTO DETECTION
+        if debug_mode:
+            st.write("🐛 **DEBUG: About to run auto detection**")
+            st.write(f"- Mode active: {st.session_state.auto_mode_active}")
+            st.write(f"- Current counter: {st.session_state.capture_counter}")
+            st.write(f"- Time: {datetime.datetime.now().strftime('%H:%M:%S')}")
+        
         run_automatic_detection(
             tracker, 
             auto_confidence_threshold, 
@@ -625,32 +635,28 @@ def show_automatic_recognition_simple(tracker):
         )
     else:
         st.info("👆 Click 'Start Auto Detection' to begin monitoring")
-    
-    # Always show debug information when debug mode is on (regardless of other conditions)
-    if debug_mode:
-        show_comprehensive_debug_status()
-    
-    # Always show captures section when enabled (even if empty)
-    if show_captures:
-        show_recent_captures(max_debug_captures)
-    
-    # Always show detection results section (even if empty)
-    show_detection_results(max_auto_logs)
-    
-    # Add immediate debugging section at the end
-    if debug_mode:
-        st.subheader("🔧 Immediate Debug Info")
-        st.write(f"**Right now at {datetime.datetime.now().strftime('%H:%M:%S')}:**")
-        st.write(f"- Auto mode active: {st.session_state.get('auto_mode_active', 'NOT SET')}")
-        st.write(f"- Capture counter: {st.session_state.get('capture_counter', 'NOT SET')}")
-        st.write(f"- Debug captures list exists: {bool(st.session_state.get('debug_captures'))}")
-        st.write(f"- Detection logs list exists: {bool(st.session_state.get('auto_detection_logs'))}")
-        st.write("- This debug section is working ✅")
+        
+        # SHOW DEBUG INFO WHEN NOT RUNNING - ALWAYS VISIBLE
+        if debug_mode:
+            st.write("🐛 **DEBUG: Auto detection not running**")
+            show_comprehensive_debug_status()
+        
+        if show_captures:
+            show_recent_captures(max_debug_captures)
+        
+        show_detection_results(max_auto_logs)
 
 
 def run_automatic_detection(tracker, confidence_threshold, detection_interval, 
                           debug_mode, show_captures, max_debug_captures, max_auto_logs):
     """Run the automatic detection loop"""
+    
+    # SHOW DEBUG AT THE VERY START OF AUTO DETECTION
+    if debug_mode:
+        st.write("🐛 **DEBUG: Inside run_automatic_detection function**")
+        st.write(f"- Confidence threshold: {confidence_threshold}")
+        st.write(f"- Detection interval: {detection_interval}s")
+        st.write(f"- Current capture counter: {st.session_state.capture_counter}")
     
     st.success("🟢 **Auto Detection Active**")
     
@@ -661,6 +667,9 @@ def run_automatic_detection(tracker, confidence_threshold, detection_interval,
     # Create unique key for camera input to force refresh
     camera_key = f"auto_camera_{st.session_state.capture_counter}_{int(time.time())}"
     
+    if debug_mode:
+        st.write(f"🔍 **Camera Key**: {camera_key}")
+    
     # Native Streamlit camera input - this is guaranteed to work!
     st.write("📷 **Live Camera Feed**")
     picture = st.camera_input(
@@ -669,10 +678,16 @@ def run_automatic_detection(tracker, confidence_threshold, detection_interval,
         help=f"Capture #{st.session_state.capture_counter + 1} - Auto-refreshing every {detection_interval}s"
     )
     
+    if debug_mode:
+        st.write(f"🔍 **Camera Input Result**: {'Image received' if picture is not None else 'No image yet'}")
+    
     # Show the captured image immediately
     if picture is not None:
         st.session_state.capture_counter += 1
         current_time = datetime.datetime.now().strftime("%H:%M:%S")
+        
+        if debug_mode:
+            st.write(f"🔍 **SUCCESS**: Captured image #{st.session_state.capture_counter} at {current_time}")
         
         # Display the captured image prominently
         st.write("📸 **Current Capture**")
@@ -694,6 +709,9 @@ def run_automatic_detection(tracker, confidence_threshold, detection_interval,
                 st.success("✅ Image captured successfully!")
         
         # Process the image
+        if debug_mode:
+            st.write("🔍 **Starting image processing...**")
+        
         success = process_camera_capture(
             tracker, 
             picture, 
@@ -704,8 +722,8 @@ def run_automatic_detection(tracker, confidence_threshold, detection_interval,
             max_auto_logs
         )
         
-        if success and debug_mode:
-            st.write(f"✅ **Processing completed** for capture #{st.session_state.capture_counter}")
+        if debug_mode:
+            st.write(f"🔍 **Processing result**: {'Success' if success else 'Failed'}")
     
     else:
         if debug_mode:
@@ -713,6 +731,11 @@ def run_automatic_detection(tracker, confidence_threshold, detection_interval,
         
         # Show placeholder when no image
         st.info("📷 Waiting for camera to capture image...")
+    
+    # SHOW DEBUG INFO BEFORE COUNTDOWN TO ENSURE IT'S VISIBLE
+    if debug_mode:
+        st.write("🔍 **About to start countdown...**")
+        show_comprehensive_debug_status()
     
     # Show countdown and auto-refresh
     if st.session_state.auto_mode_active:
