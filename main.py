@@ -641,19 +641,36 @@ def run_automatic_detection(tracker, confidence_threshold, detection_interval,
     camera_key = f"auto_camera_{st.session_state.capture_counter}_{int(time.time())}"
     
     # Native Streamlit camera input - this is guaranteed to work!
-    st.write("📷 **Camera Capture**")
+    st.write("📷 **Live Camera Feed**")
     picture = st.camera_input(
         "Auto-capturing for face detection...", 
         key=camera_key,
         help=f"Capture #{st.session_state.capture_counter + 1} - Auto-refreshing every {detection_interval}s"
     )
     
-    # Process the captured image
+    # Show the captured image immediately
     if picture is not None:
         st.session_state.capture_counter += 1
+        current_time = datetime.datetime.now().strftime("%H:%M:%S")
         
-        if debug_mode:
-            st.write(f"✅ **Capture #{st.session_state.capture_counter}** received successfully!")
+        # Display the captured image prominently
+        st.write("📸 **Current Capture**")
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.image(
+                picture, 
+                caption=f"Capture #{st.session_state.capture_counter} at {current_time}",
+                width=400
+            )
+        
+        with col2:
+            st.write(f"**Capture #:** {st.session_state.capture_counter}")
+            st.write(f"**Time:** {current_time}")
+            st.write(f"**Next capture in:** {detection_interval}s")
+            
+            if debug_mode:
+                st.success("✅ Image captured successfully!")
         
         # Process the image
         success = process_camera_capture(
@@ -672,6 +689,9 @@ def run_automatic_detection(tracker, confidence_threshold, detection_interval,
     else:
         if debug_mode:
             st.write("⏳ **Waiting for camera capture...**")
+        
+        # Show placeholder when no image
+        st.info("📷 Waiting for camera to capture image...")
     
     # Show countdown and auto-refresh
     if st.session_state.auto_mode_active:
@@ -819,26 +839,77 @@ def process_camera_capture(tracker, picture, confidence_threshold, debug_mode,
 
 
 def show_countdown_and_refresh(detection_interval, debug_mode):
-    """Show countdown and handle auto-refresh"""
+    """Show countdown and handle auto-refresh with visual countdown"""
     
-    # Countdown display
+    # Visual countdown display
     countdown_placeholder = st.empty()
+    progress_placeholder = st.empty()
+    
+    # Show current capture gallery while counting down
+    if st.session_state.debug_captures:
+        st.write("📸 **Recent Captures Gallery**")
+        show_capture_gallery()
     
     with countdown_placeholder.container():
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             st.write(f"⏱️ **Next capture in {detection_interval} seconds...**")
         with col2:
             if st.button("🔄 Capture Now", key="manual_trigger"):
                 st.rerun()
+        with col3:
+            if st.button("⏸️ Stop Auto", key="stop_auto", type="secondary"):
+                st.session_state.auto_mode_active = False
+                st.rerun()
     
-    # Auto-refresh after interval
-    time.sleep(detection_interval)
+    # Visual progress bar countdown
+    progress_bar = progress_placeholder.progress(0)
+    status_text = st.empty()
+    
+    # Countdown with progress bar
+    for i in range(detection_interval):
+        remaining = detection_interval - i
+        progress = (i + 1) / detection_interval
+        
+        progress_bar.progress(progress)
+        status_text.write(f"⏰ Next capture in **{remaining}** seconds...")
+        
+        time.sleep(1)
+        
+        # Check if user stopped detection during countdown
+        if not st.session_state.auto_mode_active:
+            status_text.write("⏸️ Auto detection stopped by user")
+            return
+    
+    # Final update
+    progress_bar.progress(1.0)
+    status_text.write("🔄 **Capturing now...**")
     
     if st.session_state.auto_mode_active:  # Check if still active
         if debug_mode:
             st.write(f"🔄 **Auto-refreshing** after {detection_interval}s interval...")
+        time.sleep(0.5)  # Brief pause before refresh
         st.rerun()
+
+
+def show_capture_gallery():
+    """Show a gallery of recent captures in a compact format"""
+    if not st.session_state.debug_captures:
+        return
+        
+    # Show last 3 captures in a row
+    recent_captures = st.session_state.debug_captures[-3:]
+    
+    if len(recent_captures) >= 1:
+        cols = st.columns(len(recent_captures))
+        
+        for i, capture in enumerate(recent_captures):
+            with cols[i]:
+                st.image(
+                    capture['image'],
+                    caption=f"#{capture['capture_number']} - {capture['timestamp']}",
+                    width=150
+                )
 
 
 def show_debug_status():
@@ -863,22 +934,56 @@ def show_debug_status():
 
 
 def show_recent_captures(max_debug_captures):
-    """Show recent captured images"""
-    st.subheader("📸 Recent Captures")
+    """Show recent captured images with enhanced display"""
+    st.subheader("📸 Recent Captures Timeline")
     
     if st.session_state.debug_captures:
-        cols = st.columns(min(3, len(st.session_state.debug_captures)))
+        # Show capture statistics
+        total_captures = len(st.session_state.debug_captures)
+        latest_capture = st.session_state.debug_captures[-1]
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Captures", total_captures)
+        with col2:
+            st.metric("Latest Capture", f"#{latest_capture['capture_number']}")
+        with col3:
+            st.metric("Latest Time", latest_capture['timestamp'])
+        
+        # Display captures in a grid
+        st.write("**Capture Gallery:**")
+        
+        # Create columns for grid display
+        num_cols = min(3, len(st.session_state.debug_captures))
+        cols = st.columns(num_cols)
         
         for i, capture in enumerate(reversed(st.session_state.debug_captures)):
-            col_idx = i % len(cols)
+            col_idx = i % num_cols
             with cols[col_idx]:
+                # Enhanced image display with border
                 st.image(
                     capture['image'],
-                    caption=f"Capture #{capture['capture_number']}\n{capture['timestamp']}\n{capture['shape']}",
-                    width=200
+                    caption=f"📷 Capture #{capture['capture_number']}\n🕐 {capture['timestamp']}\n📐 {capture['shape'][1]}x{capture['shape'][0]}",
+                    width=200,
+                    use_column_width=False
                 )
+                
+                # Add capture details
+                with st.expander(f"Details #{capture['capture_number']}", expanded=False):
+                    st.write(f"**Timestamp:** {capture['timestamp']}")
+                    st.write(f"**Dimensions:** {capture['shape']}")
+                    st.write(f"**Capture Number:** {capture['capture_number']}")
+        
+        # Add real-time update indicator
+        st.write("🔄 *Gallery updates automatically with each new capture*")
+        
     else:
-        st.info("No captures yet")
+        st.info("📷 No captures yet - images will appear here as they are captured")
+        st.write("**What you'll see here:**")
+        st.write("- Each captured image with timestamp")
+        st.write("- Image dimensions and quality info") 
+        st.write("- Automatic updates every N seconds")
+        st.write("- Last 3 captures displayed in real-time")
 
 
 def show_detection_results(max_auto_logs):
@@ -921,9 +1026,6 @@ def show_detection_results(max_auto_logs):
                         st.warning("⚠️ Not logged (recent entry)")
     else:
         st.info("No detections yet. Start auto detection to begin monitoring.")
-
-
-
 
 
 
