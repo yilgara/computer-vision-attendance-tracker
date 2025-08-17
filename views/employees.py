@@ -181,7 +181,7 @@ def show_employee_management(tracker):
                         status_text.text(f"Processing {folder_name}...")
                         st.write(folder_name)
                         
-                        source_folder = os.path.join(temp_dir, folder_name)
+                        source_folder = os.path.join(inner_path, folder_name)
                         dest_folder = os.path.join(tracker.employees_folder, folder_name)
                         os.makedirs(dest_folder, exist_ok=True)
                         
