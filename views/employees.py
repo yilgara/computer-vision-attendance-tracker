@@ -92,11 +92,10 @@ def show_employee_management(tracker):
     with tab2:
         st.subheader("Registered Employees")
         
-        # Load embeddings if not loaded
-        if not tracker.known_embeddings:
-            if not tracker.load_embeddings():
-                st.warning("No trained face embeddings found. Please add employees first.")
-                return
+        # Load embeddings 
+        if not tracker.load_embeddings():
+            st.warning("No trained face embeddings found. Please add employees first.")
+            return
         
         if tracker.known_names:
             # Get unique employee names and their photo counts
