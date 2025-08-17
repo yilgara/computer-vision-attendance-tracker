@@ -35,8 +35,7 @@ def show_settings(tracker):
     )
     
     if st.button("Update Settings"):
-        tracker.detection_backend = detection_backend
-        tracker.recognition_model = recognition_model
+        
         tracker.similarity_threshold = similarity_threshold
         tracker.entry_exit_buffer = entry_exit_buffer
         st.success("Settings updated!")
