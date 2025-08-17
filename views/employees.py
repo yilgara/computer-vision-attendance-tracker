@@ -159,37 +159,50 @@ def show_employee_management(tracker):
                 # Process folders
                 progress_bar = st.progress(0)
                 status_text = st.empty()
+
+                folders = [
+                    d for d in os.listdir(temp_dir)
+                    if os.path.isdir(os.path.join(temp_dir, d))
+                    and not d.startswith('.')
+                    and d != "__MACOSX"
+                ]
               
                 
-                folders = [d for d in os.listdir(temp_dir) 
-                          if os.path.isdir(os.path.join(temp_dir, d))]
-                st.write(folders)
-                for i, folder_name in enumerate(folders):
-                    status_text.text(f"Processing {folder_name}...")
-                    st.write(folder_name)
+                if len(folders) == 1:
+                    inner_path = os.path.join(temp_dir, folders[0])
+                    inner_folders = [
+                        d for d in os.listdir(inner_path)
+                        if os.path.isdir(os.path.join(inner_path, d))
+                        and not d.startswith('.')
+                        and d != "__MACOSX"
+                    ]
+               
+                    for i, folder_name in enumerate(inner_folders):
+                        status_text.text(f"Processing {folder_name}...")
+                        st.write(folder_name)
+                        
+                        source_folder = os.path.join(temp_dir, folder_name)
+                        dest_folder = os.path.join(tracker.employees_folder, folder_name)
+                        os.makedirs(dest_folder, exist_ok=True)
+                        
+                        # Copy files and create embeddings
+                        for file_name in os.listdir(source_folder):
+                            if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                                source_path = os.path.join(source_folder, file_name)
+                                dest_path = os.path.join(dest_folder, file_name)
+                                shutil.copy2(source_path, dest_path)
+                                
+                                # Create embedding
+                                image = cv2.imread(source_path)
+                                if image is not None:
+                                    embedding = tracker.extract_face_embedding(image)
+                                    if embedding is not None:
+                                        tracker.known_embeddings.append(embedding)
+                                        tracker.known_names.append(folder_name)
+                        
+                        progress_bar.progress((i + 1) / len(folders))
                     
-                    source_folder = os.path.join(temp_dir, folder_name)
-                    dest_folder = os.path.join(tracker.employees_folder, folder_name)
-                    os.makedirs(dest_folder, exist_ok=True)
-                    
-                    # Copy files and create embeddings
-                    for file_name in os.listdir(source_folder):
-                        if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                            source_path = os.path.join(source_folder, file_name)
-                            dest_path = os.path.join(dest_folder, file_name)
-                            shutil.copy2(source_path, dest_path)
-                            
-                            # Create embedding
-                            image = cv2.imread(source_path)
-                            if image is not None:
-                                embedding = tracker.extract_face_embedding(image)
-                                if embedding is not None:
-                                    tracker.known_embeddings.append(embedding)
-                                    tracker.known_names.append(folder_name)
-                    
-                    progress_bar.progress((i + 1) / len(folders))
-                
-                tracker.save_embeddings()
-                st.success(f"Processed {len(folders)} employees from ZIP file!")
-                status_text.empty()
-                progress_bar.empty()
+                    tracker.save_embeddings()
+                    st.success(f"Processed {len(folders)} employees from ZIP file!")
+                    status_text.empty()
+                    progress_bar.empty()
