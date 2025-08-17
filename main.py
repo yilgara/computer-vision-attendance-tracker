@@ -521,6 +521,15 @@ def show_live_recognition(tracker):
 
 
 
+import streamlit as st
+import cv2
+import numpy as np
+import time
+import datetime
+import os
+from PIL import Image
+from deepface import DeepFace
+
 def show_automatic_recognition_simple(tracker):
     """Simple automatic recognition using native Streamlit camera input"""
     st.subheader("🔄 Simple Automatic Recognition Mode")
@@ -617,14 +626,26 @@ def show_automatic_recognition_simple(tracker):
     else:
         st.info("👆 Click 'Start Auto Detection' to begin monitoring")
     
-    # Display results
+    # Always show debug information when debug mode is on (regardless of other conditions)
     if debug_mode:
-        show_debug_status()
+        show_comprehensive_debug_status()
     
-    if show_captures and st.session_state.debug_captures:
+    # Always show captures section when enabled (even if empty)
+    if show_captures:
         show_recent_captures(max_debug_captures)
     
+    # Always show detection results section (even if empty)
     show_detection_results(max_auto_logs)
+    
+    # Add immediate debugging section at the end
+    if debug_mode:
+        st.subheader("🔧 Immediate Debug Info")
+        st.write(f"**Right now at {datetime.datetime.now().strftime('%H:%M:%S')}:**")
+        st.write(f"- Auto mode active: {st.session_state.get('auto_mode_active', 'NOT SET')}")
+        st.write(f"- Capture counter: {st.session_state.get('capture_counter', 'NOT SET')}")
+        st.write(f"- Debug captures list exists: {bool(st.session_state.get('debug_captures'))}")
+        st.write(f"- Detection logs list exists: {bool(st.session_state.get('auto_detection_logs'))}")
+        st.write("- This debug section is working ✅")
 
 
 def run_automatic_detection(tracker, confidence_threshold, detection_interval, 
@@ -1028,7 +1049,7 @@ def show_detection_results(max_auto_logs):
         st.info("No detections yet. Start auto detection to begin monitoring.")
 
 
-
+   
 
 def show_manual_recognition(tracker):
     """Manual recognition mode - existing functionality"""
