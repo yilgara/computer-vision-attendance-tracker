@@ -125,11 +125,11 @@ def show_manual_recognition(tracker):
                 else:
                     st.error(f"Could not process face {i+1}")
     
-    # Add a button to clear and start over
-    if st.session_state.get("detected_faces", []):
-        if st.button("Take New Picture"):
-            st.session_state.detected_faces = []
-            st.rerun()
+        # Add a button to clear and start over
+        if st.session_state.get("detected_faces", []):
+            if st.button("Take New Picture"):
+                st.session_state.detected_faces = []
+                st.rerun()
    
 
 
