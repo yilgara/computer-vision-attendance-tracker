@@ -149,14 +149,12 @@ def show_employee_management(tracker):
         st.subheader("Bulk Upload")
         st.info("Upload a ZIP file containing folders named after employees with their photos inside.")
 
-        if "zip_processed" not in st.session_state:
-            st.session_state.zip_processed = False
+
         
         zip_file = st.file_uploader("Upload ZIP file", type=['zip'])
 
-        show_process_button = zip_file is not None and not st.session_state.zip_processed
         
-        if show_process_button and st.button("Process ZIP file"):
+        if zip_file and st.button("Process ZIP file"):
            
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Extract ZIP
@@ -214,14 +212,10 @@ def show_employee_management(tracker):
                     st.success(f"Processed {len(inner_folders)} employees from ZIP file!")
                     status_text.empty()
                     progress_bar.empty()
-                    st.session_state.zip_processed = True
+                 
                     st.rerun()
 
-        if st.session_state.zip_processed:
-            st.success("✅ ZIP file processed successfully!")
-            if st.button("Upload Another ZIP File"):
-                st.session_state.zip_processed = False
-                st.rerun()
+        
 
                     
                     
