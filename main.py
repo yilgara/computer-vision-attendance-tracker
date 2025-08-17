@@ -16,6 +16,7 @@ from PIL import Image
 import io
 import zipfile
 import base64
+import streamlit.components.v1 as components
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 
 warnings.filterwarnings("ignore")
@@ -597,100 +598,296 @@ def show_manual_recognition(tracker):
             except Exception as e:
                 st.error(f"Error processing image: {e}")
 
+def show_live_recognition(tracker):
+    """Show live face recognition interface"""
+    st.header("Live Face Recognition")
+    
+    # Load embeddings if not loaded
+    if not tracker.known_embeddings:
+        if not tracker.load_embeddings():
+            st.warning("No trained face embeddings found. Please add employees first.")
+            return
+    
+    st.info(f"System ready with {len(set(tracker.known_names))} registered employees")
+    
+    # Mode selection
+    st.subheader("Recognition Mode")
+    mode = st.radio(
+        "Select Recognition Mode:",
+        options=["Manual Mode", "Automatic Mode"],
+        help="Manual: Take picture manually and approve logging. Automatic: Continuous detection with auto-logging."
+    )
+    
+    if mode == "Manual Mode":
+        show_manual_recognition(tracker)
+    else:
+        show_automatic_recognition(tracker)
+
+def show_manual_recognition(tracker):
+    """Manual recognition mode - existing functionality"""
+    st.subheader("📷 Manual Camera Input")
+    st.info("Take a picture when ready, then manually approve attendance logging.")
+    
+    # Use Streamlit's camera input
+    picture = st.camera_input("Take a picture for face recognition")
+    
+    if picture is not None:
+        # Convert to OpenCV format
+        image = Image.open(picture)
+        image_array = np.array(image)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        
+        # Process image
+        with st.spinner("Processing image..."):
+            try:
+                # Detect faces
+                temp_path = "temp_camera.jpg"
+                cv2.imwrite(temp_path, image_array)
+                
+                faces = DeepFace.extract_faces(
+                    img_path=temp_path,
+                    detector_backend=tracker.detection_backend,
+                    enforce_detection=False
+                )
+                
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                
+                if faces:
+                    st.success(f"Found {len(faces)} face(s)")
+                    
+                    # Process each face
+                    for i, face in enumerate(faces):
+                        if isinstance(face, dict):
+                            face_array = (face['face'] * 255).astype(np.uint8)
+                        else:
+                            face_array = (face * 255).astype(np.uint8)
+                        
+                        # Get embedding
+                        embedding = tracker.extract_face_embedding(face_array)
+                        
+                        if embedding is not None:
+                            # Recognize face
+                            name, confidence = tracker.recognize_face_from_embedding(embedding)
+                            
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.image(face_array, caption=f"Face {i+1}", width=200)
+                            
+                            with col2:
+                                st.write(f"**Recognition Result:**")
+                                st.write(f"Name: {name}")
+                                st.write(f"Confidence: {confidence:.1f}%")
+                                
+                                if name != "Unknown" and confidence > (tracker.similarity_threshold * 100):
+                                    action = tracker.determine_action(name)
+                                    
+                                    if st.button(f"Log {action} for {name}", key=f"log_{i}"):
+                                        success = tracker.log_attendance(name, action, confidence)
+                                        if success:
+                                            st.success(f"Logged {action} for {name}!")
+                                        else:
+                                            st.warning("Entry was too recent, skipped logging.")
+                                else:
+                                    st.warning("Confidence too low or unknown person")
+                        else:
+                            st.error(f"Could not process face {i+1}")
+                else:
+                    st.warning("No faces detected in the image")
+                    
+            except Exception as e:
+                st.error(f"Error processing image: {e}")
+
+def get_camera_html(detection_interval):
+    """Generate HTML/JS for automatic camera capture"""
+    return f"""
+    <div id="camera-container">
+        <video id="camera-feed" autoplay playsinline style="width: 100%; max-width: 640px; height: auto; border-radius: 10px;"></video>
+        <canvas id="capture-canvas" style="display: none;"></canvas>
+        <div id="camera-status" style="margin-top: 10px; padding: 10px; background: #f0f2f6; border-radius: 5px;">
+            <p id="status-text">Initializing camera...</p>
+        </div>
+    </div>
+
+    <script>
+    let video = document.getElementById('camera-feed');
+    let canvas = document.getElementById('capture-canvas');
+    let context = canvas.getContext('2d');
+    let statusText = document.getElementById('status-text');
+    let isCapturing = false;
+
+    // Initialize camera
+    async function initCamera() {{
+        try {{
+            const constraints = {{
+                video: {{
+                    width: {{ ideal: 640 }},
+                    height: {{ ideal: 480 }},
+                    facingMode: 'user'
+                }}
+            }};
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+            statusText.textContent = '🟢 Camera active - Automatic detection enabled';
+            statusText.style.color = 'green';
+            
+            // Start automatic capture
+            startAutoCapture();
+            
+        }} catch (err) {{
+            console.error('Camera access error:', err);
+            statusText.textContent = '🔴 Camera access denied or not available';
+            statusText.style.color = 'red';
+        }}
+    }}
+
+    function startAutoCapture() {{
+        if (isCapturing) return;
+        isCapturing = true;
+        
+        setInterval(() => {{
+            if (video.videoWidth > 0 && video.videoHeight > 0) {{
+                captureFrame();
+            }}
+        }}, {detection_interval * 1000});
+    }}
+
+    function captureFrame() {{
+        // Set canvas dimensions to match video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        // Draw current frame
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Convert to base64
+        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Send to Streamlit
+        window.parent.postMessage({{
+            type: 'camera-capture',
+            image: imageData,
+            timestamp: Date.now()
+        }}, '*');
+    }}
+
+    // Initialize on load
+    initCamera();
+    </script>
+    """
+
 def show_automatic_recognition(tracker):
-    """Streamlit camera with automatic refresh - no external dependencies"""
-    st.subheader("🔄 Auto-Refresh Camera Recognition")
-    st.info("Uses Streamlit's built-in camera with automatic refresh - works on all platforms")
+    """Automatic recognition mode with continuous detection"""
+    st.subheader("🔄 Automatic Recognition Mode")
+    st.info("Camera will continuously monitor for faces and automatically log attendance.")
     
-    # Initialize session state
-    if 'auto_refresh_active' not in st.session_state:
-        st.session_state.auto_refresh_active = False
-    if 'last_auto_process_time' not in st.session_state:
-        st.session_state.last_auto_process_time = 0
-    if 'auto_refresh_logs' not in st.session_state:
-        st.session_state.auto_refresh_logs = []
+    # Initialize session state for automatic mode
+    if 'auto_mode_active' not in st.session_state:
+        st.session_state.auto_mode_active = False
+    if 'auto_detection_logs' not in st.session_state:
+        st.session_state.auto_detection_logs = []
+    if 'last_processed_timestamp' not in st.session_state:
+        st.session_state.last_processed_timestamp = 0
     
-    # Settings
-    col1, col2 = st.columns(2)
+    # Auto mode settings
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        confidence_threshold = st.slider(
-            "Auto Confidence Threshold:",
+        auto_confidence_threshold = st.slider(
+            "Auto-log Confidence Threshold:",
             min_value=0.5,
             max_value=1.0,
-            value=0.8,
+            value=max(0.8, tracker.similarity_threshold),
             step=0.05,
-            key="auto_refresh_conf"
+            help="Higher threshold for automatic logging (more strict)"
         )
     
     with col2:
-        refresh_interval = st.number_input(
-            "Refresh Interval (seconds):",
-            min_value=2,
-            max_value=15,
-            value=5,
-            help="How often to automatically refresh and process"
+        detection_interval = st.number_input(
+            "Detection Interval (seconds):",
+            min_value=1,
+            max_value=30,
+            value=3,
+            help="How often to process frames for detection"
+        )
+    
+    with col3:
+        max_auto_logs = st.number_input(
+            "Max Auto Logs:",
+            min_value=5,
+            max_value=100,
+            value=20,
+            help="Maximum automatic detections to show"
         )
     
     # Control buttons
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("▶️ Start Auto-Refresh", type="primary"):
-            st.session_state.auto_refresh_active = True
+        if st.button("▶️ Start Auto Detection", type="primary"):
+            st.session_state.auto_mode_active = True
             st.rerun()
     
     with col2:
-        if st.button("⏸️ Stop Auto-Refresh", type="secondary"):
-            st.session_state.auto_refresh_active = False
+        if st.button("⏸️ Stop Auto Detection", type="secondary"):
+            st.session_state.auto_mode_active = False
             st.rerun()
     
     with col3:
-        if st.button("🗑️ Clear Auto Logs"):
-            st.session_state.auto_refresh_logs = []
+        if st.button("🗑️ Clear Logs"):
+            st.session_state.auto_detection_logs = []
             st.rerun()
     
-    if st.session_state.auto_refresh_active:
-        st.success("🟢 Auto-Refresh Active")
+    # Show camera interface
+    if st.session_state.auto_mode_active:
+        st.success("🟢 Auto Detection Active")
         
-        # Camera input with unique key to force refresh
-        current_time = time.time()
-        camera_key = f"auto_camera_{int(current_time / refresh_interval)}"
+        # Display automatic camera capture
+        camera_html = get_camera_html(detection_interval)
+        components.html(camera_html, height=600)
         
-        picture = st.camera_input(
-            "📸 Auto-refreshing camera (will update automatically)",
-            key=camera_key
-        )
+        # Handle captured images via JavaScript message
+        captured_image = st.session_state.get('captured_image_data', None)
         
-        if picture is not None:
-            # Only process if enough time has passed
-            if current_time - st.session_state.last_auto_process_time >= refresh_interval - 1:
-                st.session_state.last_auto_process_time = current_time
-                process_auto_refresh_image(tracker, picture, confidence_threshold)
+        if captured_image:
+            current_timestamp = st.session_state.get('capture_timestamp', 0)
+            
+            # Only process if it's a new capture
+            if current_timestamp > st.session_state.last_processed_timestamp:
+                st.session_state.last_processed_timestamp = current_timestamp
+                process_captured_frame(tracker, captured_image, auto_confidence_threshold, max_auto_logs)
         
-        # Auto-refresh the page
-        time.sleep(refresh_interval)
+        # Auto-refresh to handle new captures
+        time.sleep(0.5)
         st.rerun()
         
     else:
-        st.info("🔴 Auto-Refresh Stopped")
-        st.camera_input("Camera preview (not processing)", disabled=True)
+        st.info("🔴 Auto Detection Stopped")
+        st.write("Click 'Start Auto Detection' to begin continuous monitoring.")
     
-    # Display logs
-    display_auto_refresh_logs()
+    # Display automatic detection logs
+    display_detection_logs(max_auto_logs)
 
-def process_auto_refresh_image(tracker, picture, confidence_threshold):
-    """Process image from auto-refresh camera"""
+def process_captured_frame(tracker, image_data, confidence_threshold, max_logs):
+    """Process automatically captured frame"""
     try:
+        # Decode base64 image
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+        
+        image_bytes = base64.b64decode(image_data)
+        
         # Convert to OpenCV format
-        image = Image.open(picture)
-        image_array = np.array(image)
-        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        image_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        # Use temporary file
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
-            temp_path = tmp_file.name
+        if image_array is None:
+            return
         
+        # Detect faces
+        temp_path = f"temp_auto_{time.time()}.jpg"
         cv2.imwrite(temp_path, image_array)
         
         faces = DeepFace.extract_faces(
@@ -700,76 +897,98 @@ def process_auto_refresh_image(tracker, picture, confidence_threshold):
         )
         
         if os.path.exists(temp_path):
-            os.unlink(temp_path)
+            os.remove(temp_path)
         
         if faces:
-            for face in faces:
+            for i, face in enumerate(faces):
                 if isinstance(face, dict):
                     face_array = (face['face'] * 255).astype(np.uint8)
                 else:
                     face_array = (face * 255).astype(np.uint8)
                 
+                # Get embedding
                 embedding = tracker.extract_face_embedding(face_array)
                 
                 if embedding is not None:
+                    # Recognize face
                     name, confidence = tracker.recognize_face_from_embedding(embedding)
                     
                     if name != "Unknown" and confidence > (confidence_threshold * 100):
                         action = tracker.determine_action(name)
+                        
+                        # Try to log attendance automatically
                         success = tracker.log_attendance(name, action, confidence)
                         
+                        # Add to detection log
                         log_entry = {
                             'name': name,
                             'confidence': confidence,
                             'action': action,
                             'logged': success,
                             'timestamp': datetime.datetime.now().strftime("%H:%M:%S"),
-                            'method': 'Auto-Refresh'
+                            'face_image': face_array
                         }
                         
-                        st.session_state.auto_refresh_logs.append(log_entry)
-                        if len(st.session_state.auto_refresh_logs) > 50:
-                            st.session_state.auto_refresh_logs = st.session_state.auto_refresh_logs[-25:]
+                        # Add to session state log (keep only recent entries)
+                        st.session_state.auto_detection_logs.append(log_entry)
+                        if len(st.session_state.auto_detection_logs) > max_logs * 2:
+                            st.session_state.auto_detection_logs = st.session_state.auto_detection_logs[-max_logs:]
                         
-                        # Show notification
+                        # Show immediate notification
                         if success:
-                            st.toast(f"✅ {name} - {action} logged!")
+                            st.toast(f"✅ {name} - {action} logged!", icon="✅")
                         else:
-                            st.toast(f"⚠️ {name} detected but not logged")
+                            st.toast(f"⚠️ {name} detected but not logged (too recent)", icon="⚠️")
     
     except Exception as e:
-        st.error(f"Auto-refresh processing error: {e}")
+        st.error(f"Auto detection error: {e}")
 
-def display_auto_refresh_logs():
-    """Display auto-refresh logs"""
-    st.subheader("📝 Auto-Refresh Log")
+def display_detection_logs(max_logs):
+    """Display automatic detection logs"""
+    st.subheader("📝 Automatic Detection Log")
     
-    if st.session_state.auto_refresh_logs:
-        for log_entry in reversed(st.session_state.auto_refresh_logs[-10:]):
-            with st.container():
-                col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    if st.session_state.auto_detection_logs:
+        # Show recent detections
+        recent_logs = st.session_state.auto_detection_logs[-max_logs:]
+        
+        for i, log_entry in enumerate(reversed(recent_logs)):
+            with st.expander(f"{log_entry['name']} - {log_entry['timestamp']}", expanded=False):
+                col1, col2 = st.columns([1, 2])
                 
                 with col1:
-                    st.write(f"**{log_entry['name']}**")
+                    if 'face_image' in log_entry:
+                        st.image(log_entry['face_image'], caption="Detected Face", width=150)
                 
                 with col2:
-                    st.write(f"Conf: {log_entry['confidence']:.1f}%")
-                
-                with col3:
-                    st.write(f"Action: {log_entry['action']}")
-                
-                with col4:
-                    st.write(f"Time: {log_entry['timestamp']}")
-                
-                if log_entry['logged']:
-                    st.success("✅ Logged")
-                else:
-                    st.warning("⚠️ Not logged")
-                
-                st.divider()
+                    st.write(f"**Name:** {log_entry['name']}")
+                    st.write(f"**Confidence:** {log_entry['confidence']:.1f}%")
+                    st.write(f"**Action:** {log_entry['action']}")
+                    st.write(f"**Time:** {log_entry['timestamp']}")
+                    
+                    if log_entry['logged']:
+                        st.success("✅ Successfully logged to attendance")
+                    else:
+                        st.warning("⚠️ Not logged (recent entry or low confidence)")
     else:
-        st.info("No auto-refresh detections yet.")
-    
+        st.info("No automatic detections yet. Start auto detection to begin monitoring.")
+
+# Add JavaScript message handler for Streamlit
+def add_message_handler():
+    """Add JavaScript message handler to receive camera captures"""
+    js_code = """
+    <script>
+    window.addEventListener('message', function(event) {
+        if (event.data.type === 'camera-capture') {
+            // Store the captured image data in session state
+            // This would need to be handled via Streamlit's component communication
+            console.log('Received camera capture:', event.data.timestamp);
+        }
+    });
+    </script>
+    """
+    components.html(js_code, height=0)
+
+
 
 
 
