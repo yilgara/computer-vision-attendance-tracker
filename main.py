@@ -598,141 +598,177 @@ def show_manual_recognition(tracker):
                 st.error(f"Error processing image: {e}")
 
 def show_automatic_recognition(tracker):
-    """WebRTC-based automatic recognition using streamlit-webrtc package"""
-    try:
-        from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration
-        import av
+    """Streamlit camera with automatic refresh - no external dependencies"""
+    st.subheader("🔄 Auto-Refresh Camera Recognition")
+    st.info("Uses Streamlit's built-in camera with automatic refresh - works on all platforms")
+    
+    # Initialize session state
+    if 'auto_refresh_active' not in st.session_state:
+        st.session_state.auto_refresh_active = False
+    if 'last_auto_process_time' not in st.session_state:
+        st.session_state.last_auto_process_time = 0
+    if 'auto_refresh_logs' not in st.session_state:
+        st.session_state.auto_refresh_logs = []
+    
+    # Settings
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        confidence_threshold = st.slider(
+            "Auto Confidence Threshold:",
+            min_value=0.5,
+            max_value=1.0,
+            value=0.8,
+            step=0.05,
+            key="auto_refresh_conf"
+        )
+    
+    with col2:
+        refresh_interval = st.number_input(
+            "Refresh Interval (seconds):",
+            min_value=2,
+            max_value=15,
+            value=5,
+            help="How often to automatically refresh and process"
+        )
+    
+    # Control buttons
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("▶️ Start Auto-Refresh", type="primary"):
+            st.session_state.auto_refresh_active = True
+            st.rerun()
+    
+    with col2:
+        if st.button("⏸️ Stop Auto-Refresh", type="secondary"):
+            st.session_state.auto_refresh_active = False
+            st.rerun()
+    
+    with col3:
+        if st.button("🗑️ Clear Auto Logs"):
+            st.session_state.auto_refresh_logs = []
+            st.rerun()
+    
+    if st.session_state.auto_refresh_active:
+        st.success("🟢 Auto-Refresh Active")
         
-        st.subheader("📹 WebRTC Automatic Recognition")
-        st.info("Uses streamlit-webrtc package for browser-based camera access")
+        # Camera input with unique key to force refresh
+        current_time = time.time()
+        camera_key = f"auto_camera_{int(current_time / refresh_interval)}"
         
-        # Settings
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            confidence_threshold = st.slider(
-                "WebRTC Confidence Threshold:",
-                min_value=0.5,
-                max_value=1.0,
-                value=0.8,
-                step=0.05,
-                key="webrtc_conf"
-            )
-        
-        with col2:
-            process_every_n_frames = st.number_input(
-                "Process Every N Frames:",
-                min_value=10,
-                max_value=100,
-                value=30,
-                help="Higher = less CPU usage, lower = more responsive"
-            )
-        
-        class FaceRecognitionTransformer(VideoTransformerBase):
-            def __init__(self):
-                self.frame_count = 0
-                self.last_results = []
-            
-            def transform(self, frame):
-                img = frame.to_ndarray(format="bgr24")
-                
-                # Process only every N frames to save CPU
-                self.frame_count += 1
-                if self.frame_count % process_every_n_frames == 0:
-                    self.process_frame_for_recognition(img)
-                
-                # Draw results on frame
-                annotated_img = self.draw_results(img)
-                return av.VideoFrame.from_ndarray(annotated_img, format="bgr24")
-            
-            def process_frame_for_recognition(self, image_array):
-                """Process frame for face recognition"""
-                try:
-                    temp_path = f"temp_webrtc_{time.time()}.jpg"
-                    cv2.imwrite(temp_path, image_array)
-                    
-                    faces = DeepFace.extract_faces(
-                        img_path=temp_path,
-                        detector_backend=tracker.detection_backend,
-                        enforce_detection=False
-                    )
-                    
-                    if os.path.exists(temp_path):
-                        os.remove(temp_path)
-                    
-                    self.last_results = []
-                    
-                    if faces:
-                        for face in faces:
-                            if isinstance(face, dict):
-                                face_array = (face['face'] * 255).astype(np.uint8)
-                            else:
-                                face_array = (face * 255).astype(np.uint8)
-                            
-                            embedding = tracker.extract_face_embedding(face_array)
-                            
-                            if embedding is not None:
-                                name, confidence = tracker.recognize_face_from_embedding(embedding)
-                                
-                                result = {
-                                    'name': name,
-                                    'confidence': confidence,
-                                    'timestamp': datetime.datetime.now().strftime("%H:%M:%S")
-                                }
-                                
-                                self.last_results.append(result)
-                                
-                                if name != "Unknown" and confidence > (confidence_threshold * 100):
-                                    action = tracker.determine_action(name)
-                                    success = tracker.log_attendance(name, action, confidence)
-                                    
-                                    if success:
-                                        st.toast(f"✅ {name} - {action} logged!")
-                
-                except Exception as e:
-                    print(f"WebRTC processing error: {e}")
-            
-            def draw_results(self, img):
-                """Draw recognition results on frame"""
-                if self.last_results:
-                    y_offset = 30
-                    for result in self.last_results[-3:]:  # Show last 3 results
-                        text = f"{result['name']} ({result['confidence']:.1f}%)"
-                        cv2.putText(img, text, (10, y_offset), 
-                                  cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                        y_offset += 30
-                
-                return img
-        
-        # WebRTC configuration for better connectivity
-        rtc_configuration = RTCConfiguration({
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-        })
-        
-        webrtc_ctx = webrtc_streamer(
-            key="face-recognition-webrtc",
-            video_transformer_factory=FaceRecognitionTransformer,
-            rtc_configuration=rtc_configuration,
-            media_stream_constraints={"video": True, "audio": False},
-            async_processing=True,
+        picture = st.camera_input(
+            "📸 Auto-refreshing camera (will update automatically)",
+            key=camera_key
         )
         
-        if webrtc_ctx.video_transformer:
-            st.success("🟢 WebRTC camera active - Processing frames automatically")
-            
-            # Display recent results
-            if hasattr(webrtc_ctx.video_transformer, 'last_results'):
-                results = webrtc_ctx.video_transformer.last_results
-                if results:
-                    st.subheader("Recent Detections")
-                    for result in results[-5:]:
-                        st.write(f"**{result['name']}** - {result['confidence']:.1f}% at {result['timestamp']}")
-        else:
-            st.info("Click 'START' to begin WebRTC recognition")
+        if picture is not None:
+            # Only process if enough time has passed
+            if current_time - st.session_state.last_auto_process_time >= refresh_interval - 1:
+                st.session_state.last_auto_process_time = current_time
+                process_auto_refresh_image(tracker, picture, confidence_threshold)
+        
+        # Auto-refresh the page
+        time.sleep(refresh_interval)
+        st.rerun()
+        
+    else:
+        st.info("🔴 Auto-Refresh Stopped")
+        st.camera_input("Camera preview (not processing)", disabled=True)
     
-    except ImportError:
-        st.error("streamlit-webrtc not installed. Install with: pip install streamlit-webrtc")
-        st.code("pip install streamlit-webrtc")
+    # Display logs
+    display_auto_refresh_logs()
+
+def process_auto_refresh_image(tracker, picture, confidence_threshold):
+    """Process image from auto-refresh camera"""
+    try:
+        # Convert to OpenCV format
+        image = Image.open(picture)
+        image_array = np.array(image)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        
+        # Use temporary file
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
+            temp_path = tmp_file.name
+        
+        cv2.imwrite(temp_path, image_array)
+        
+        faces = DeepFace.extract_faces(
+            img_path=temp_path,
+            detector_backend=tracker.detection_backend,
+            enforce_detection=False
+        )
+        
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        
+        if faces:
+            for face in faces:
+                if isinstance(face, dict):
+                    face_array = (face['face'] * 255).astype(np.uint8)
+                else:
+                    face_array = (face * 255).astype(np.uint8)
+                
+                embedding = tracker.extract_face_embedding(face_array)
+                
+                if embedding is not None:
+                    name, confidence = tracker.recognize_face_from_embedding(embedding)
+                    
+                    if name != "Unknown" and confidence > (confidence_threshold * 100):
+                        action = tracker.determine_action(name)
+                        success = tracker.log_attendance(name, action, confidence)
+                        
+                        log_entry = {
+                            'name': name,
+                            'confidence': confidence,
+                            'action': action,
+                            'logged': success,
+                            'timestamp': datetime.datetime.now().strftime("%H:%M:%S"),
+                            'method': 'Auto-Refresh'
+                        }
+                        
+                        st.session_state.auto_refresh_logs.append(log_entry)
+                        if len(st.session_state.auto_refresh_logs) > 50:
+                            st.session_state.auto_refresh_logs = st.session_state.auto_refresh_logs[-25:]
+                        
+                        # Show notification
+                        if success:
+                            st.toast(f"✅ {name} - {action} logged!")
+                        else:
+                            st.toast(f"⚠️ {name} detected but not logged")
+    
+    except Exception as e:
+        st.error(f"Auto-refresh processing error: {e}")
+
+def display_auto_refresh_logs():
+    """Display auto-refresh logs"""
+    st.subheader("📝 Auto-Refresh Log")
+    
+    if st.session_state.auto_refresh_logs:
+        for log_entry in reversed(st.session_state.auto_refresh_logs[-10:]):
+            with st.container():
+                col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+                
+                with col1:
+                    st.write(f"**{log_entry['name']}**")
+                
+                with col2:
+                    st.write(f"Conf: {log_entry['confidence']:.1f}%")
+                
+                with col3:
+                    st.write(f"Action: {log_entry['action']}")
+                
+                with col4:
+                    st.write(f"Time: {log_entry['timestamp']}")
+                
+                if log_entry['logged']:
+                    st.success("✅ Logged")
+                else:
+                    st.warning("⚠️ Not logged")
+                
+                st.divider()
+    else:
+        st.info("No auto-refresh detections yet.")
     
 
 
