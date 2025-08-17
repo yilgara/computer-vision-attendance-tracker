@@ -735,7 +735,7 @@ def run_automatic_detection(tracker, confidence_threshold, detection_interval,
     # SHOW DEBUG INFO BEFORE COUNTDOWN TO ENSURE IT'S VISIBLE
     if debug_mode:
         st.write("🔍 **About to start countdown...**")
-        show_comprehensive_debug_status()
+        show_debug_status()
     
     # Show countdown and auto-refresh
     if st.session_state.auto_mode_active:
