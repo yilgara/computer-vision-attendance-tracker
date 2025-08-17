@@ -1,4 +1,4 @@
-import os, csv, pickle, datetime, time, logging
+import os, csv, pickle, datetime, time, logging, cv2
 import numpy as np
 import pandas as pd
 from deepface import DeepFace
