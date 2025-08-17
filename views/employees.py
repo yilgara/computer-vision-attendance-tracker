@@ -187,7 +187,6 @@ def show_employee_management(tracker):
                         
                         # Copy files and create embeddings
                         for file_name in os.listdir(source_folder):
-                            st.write(file_name)
                             if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
                                 source_path = os.path.join(source_folder, file_name)
                                 dest_path = os.path.join(dest_folder, file_name)
@@ -197,14 +196,12 @@ def show_employee_management(tracker):
                                 image = cv2.imread(source_path)
                                 if image is not None:
                                     embedding = tracker.extract_face_embedding(image)
-                                    st.write(source_path)
                                     if embedding is not None:
                                         tracker.known_embeddings.append(embedding)
-                                        st.write(folder_name)
                                         tracker.known_names.append(folder_name)
                         
                         progress_bar.progress((i + 1) / len(inner_folders))
-                        st.write(tracker.known_names)
+                
                     
                         tracker.save_embeddings()
                         st.success(f"Processed {len(inner_folders)} employees from ZIP file!")
