@@ -197,7 +197,7 @@ def show_employee_management(tracker):
                                 image = cv2.imread(source_path)
                                 if image is not None:
                                     embedding = tracker.extract_face_embedding(image)
-                                    st.write(image)
+                                    st.write(source_path)
                                     if embedding is not None:
                                         tracker.known_embeddings.append(embedding)
                                         st.write(folder_name)
