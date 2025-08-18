@@ -1,4 +1,4 @@
-# Computer Vision Employee Attendance
+# Computer Vision Attendance Tracker
 
 A Python-based, Streamlit-powered employee attendance system that leverages computer vision and face recognition to automate attendance tracking. This project simplifies workforce management by providing easy, accurate, and real-time attendance monitoring.
 
