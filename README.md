@@ -72,4 +72,4 @@ pip install -r requirements.txt
 ---
 
 **Deployed Application:**  
-You can access the live system at: [https://computer-vision-employee-attendance-c7wkb2w8mqhipgshratgp8.streamlit.app](https://computer-vision-employee-attendance-c7wkb2w8mqhipgshratgp8.streamlit.app)
+You can access the live system at: [https://github.com/yilgara/computer-vision-attendance-tracker](https://github.com/yilgara/computer-vision-attendance-tracker)
