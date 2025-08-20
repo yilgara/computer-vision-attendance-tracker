@@ -53,8 +53,7 @@ def show_manual_recognition(tracker):
 
     if picture is not None:
         # Store the processed faces in session_state to avoid reprocessing
-        if "detected_faces" not in st.session_state:
-            st.session_state.detected_faces = []
+        st.session_state.detected_faces = []
 
         # Process the image only once
         if not st.session_state.detected_faces:
@@ -114,7 +113,7 @@ def show_manual_recognition(tracker):
                             if success:
                                 st.success(f"Logged {action} for {name}!")
                                 # Clear session state after logging
-                                st.session_state.detected_faces = []
+                               
                             else:
                                 st.warning("Entry was too recent, skipped logging.")
                     else:
