@@ -52,41 +52,39 @@ def show_manual_recognition(tracker):
     picture = st.camera_input("Take a picture for face recognition")
 
     if picture is not None:
-        # Store the processed faces in session_state to avoid reprocessing
-        st.session_state.detected_faces = []
+        
+        image = Image.open(picture)
+        image_array = np.array(image)
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
 
-        # Process the image only once
-        if not st.session_state.detected_faces:
-            image = Image.open(picture)
-            image_array = np.array(image)
-            image_array = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+        faces = []
 
-            with st.spinner("Processing image..."):
-                try:
-                    temp_path = "temp_camera.jpg"
-                    cv2.imwrite(temp_path, image_array)
+        with st.spinner("Processing image..."):
+            try:
+                temp_path = "temp_camera.jpg"
+                cv2.imwrite(temp_path, image_array)
 
-                    faces = DeepFace.extract_faces(
-                        img_path=temp_path,
-                        detector_backend=tracker.detection_backend,
-                        enforce_detection=False
-                    )
+                faces = DeepFace.extract_faces(
+                    img_path=temp_path,
+                    detector_backend=tracker.detection_backend,
+                    enforce_detection=False
+                )
 
-                    if os.path.exists(temp_path):
-                        os.remove(temp_path)
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
-                    if faces:
-                        st.success(f"Found {len(faces)} face(s)")
-                        st.session_state.detected_faces = faces
-                    else:
-                        st.warning("No faces detected in the image")
+                if faces:
+                    st.success(f"Found {len(faces)} face(s)")
+                else:
+                    st.warning("No faces detected in the image")
 
-                except Exception as e:
-                    st.error(f"Error processing image: {e}")
-                    return
+            except Exception as e:
+                st.error(f"Error processing image: {e}")
+                return
+            
 
         # Step 2: Show detected faces (from session_state, no reprocessing)
-        for i, face in enumerate(st.session_state.detected_faces):
+        for i, face in enumerate(faces):
             if isinstance(face, dict):
                 face_array = (face['face'] * 255).astype(np.uint8)
             else:
@@ -112,8 +110,6 @@ def show_manual_recognition(tracker):
                             success = tracker.log_attendance(name, action, confidence)
                             if success:
                                 st.success(f"Logged {action} for {name}!")
-                                # Clear session state after logging
-                               
                             else:
                                 st.warning("Entry was too recent, skipped logging.")
                     else:
